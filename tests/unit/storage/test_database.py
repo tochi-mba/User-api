@@ -52,6 +52,11 @@ def sidecar(database: Database, suffix: str) -> Path:
     return database.path.with_name(database.path.name + suffix)
 
 
+def any_sidecar_exists(path: Path) -> bool:
+    """Whether any of a database's companion files are on disk."""
+    return any(path.with_name(path.name + suffix).exists() for suffix in SIDECARS)
+
+
 class TestReadsAndWrites:
     async def test_a_written_row_reads_back(self, db: Database) -> None:
         await db.execute("INSERT INTO t (x, y) VALUES (?, ?)", (1, "one"))
@@ -304,12 +309,7 @@ class TestFileMode:
         make_private(lonely)
 
         assert stat.S_IMODE(lonely.stat().st_mode) == DATABASE_FILE_MODE
-        assert not sidecar_paths_exist(lonely)
-
-
-def sidecar_paths_exist(path: Path) -> bool:
-    """Whether any of a database's companion files are on disk."""
-    return any(path.with_name(path.name + suffix).exists() for suffix in SIDECARS)
+        assert not any_sidecar_exists(lonely)
 
 
 class TestCheckpointing:

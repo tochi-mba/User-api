@@ -56,6 +56,22 @@ learns their pronouns has somewhere obvious to put them.
 """
 
 
+def normalize_key_prefix(raw: str) -> str:
+    """Fold a key *prefix* the same way, but keep a trailing underscore.
+
+    ``?key_prefix=contact_`` and ``?key_prefix=contact`` are different questions -- the
+    first asks for the ``contact_`` family and the second also matches a key called
+    ``contacts``. :func:`normalize_key` strips trailing underscores, because a key may not
+    end in one, so running a prefix through it would silently turn the narrow question
+    into the broad one.
+
+    Everything else folds identically, so a caller that types ``Contact `` gets the family
+    it meant.
+    """
+    folded = _REPEATS.sub("_", _ILLEGAL.sub("", _SEPARATORS.sub("_", raw.strip().lower())))
+    return folded.lstrip("_")
+
+
 def normalize_key(raw: str) -> str:
     """Fold a caller's field name into the one canonical form.
 

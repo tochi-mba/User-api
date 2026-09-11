@@ -37,7 +37,7 @@ one, by attaching provenance to everything that comes out.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from user_api.core.logging import get_logger
@@ -51,7 +51,7 @@ from user_api.domain.entries import (
     validate_note_body,
 )
 from user_api.domain.errors import CredentialRefusedError, EntryNotFoundError
-from user_api.domain.keys import WELL_KNOWN_KEYS, normalize_key
+from user_api.domain.keys import WELL_KNOWN_KEYS, normalize_key, normalize_key_prefix
 from user_api.domain.scopes import check_filterable, check_known, check_writable
 from user_api.domain.secrets import KEYRING_ADVICE, looks_like_a_credential
 from user_api.domain.values import searchable_text, validate_value
@@ -212,6 +212,11 @@ class UserService:
         cursor: str | None = None,
     ) -> Page:
         """The one flexible read behind ``GET /v1/user/entries``."""
+        # Normalised here rather than at the edge, because a stored key is normalised and
+        # a filter that was not would quietly match nothing: ?keys=Preferred%20Name would
+        # return an empty page rather than the field it plainly means.
+        filters = _normalise_key_filters(filters)
+
         if filters.scope is not None:
             # Narrowing within what the token already grants is useful; widening is the
             # thing the whole scope design exists to prevent. Refused loudly rather than
@@ -529,6 +534,24 @@ class UserService:
         if requested is None:
             return self._config.search_default_limit
         return max(1, min(requested, self._config.search_max_limit))
+
+
+def _normalise_key_filters(filters: Filters) -> Filters:
+    """Fold any key or key prefix in a filter the same way a write folds one.
+
+    An unfoldable key raises, which is the same answer ``get_field`` gives for one -- a
+    caller that asked for a key that cannot exist has made a mistake worth hearing about,
+    and silently returning nothing would teach it that the key is simply unset.
+    """
+    if filters.keys is None and filters.key_prefix is None:
+        return filters
+    return replace(
+        filters,
+        keys=tuple(normalize_key(key) for key in filters.keys) if filters.keys else filters.keys,
+        key_prefix=(
+            normalize_key_prefix(filters.key_prefix) if filters.key_prefix is not None else None
+        ),
+    )
 
 
 def _found(entry: Entry | None) -> Entry:
