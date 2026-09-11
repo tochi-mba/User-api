@@ -319,6 +319,7 @@ class SqlEntryStore:
         entry_id: str,
         granted: str | None,
         now: datetime,
+        asserted_by: str,
         pin_cap: int,
         scope_cap_granted: str | None,
         journal: Journal,
@@ -366,7 +367,7 @@ class SqlEntryStore:
 
             connection.execute(
                 "UPDATE entries SET value_json = ?, value_type = ?, body = ?, description = ?,"
-                " sensitivity = ?, source = ?, source_detail = ?, pinned = ?,"
+                " sensitivity = ?, source = ?, source_detail = ?, asserted_by = ?, pinned = ?,"
                 " revision = revision + 1, updated_at = ?, search_text = ?"
                 " WHERE entry_id = ?",
                 (
@@ -377,6 +378,10 @@ class SqlEntryStore:
                     merged.sensitivity.value,
                     merged.source.value,
                     merged.source_detail,
+                    # Moves to the reviser: asserted_by means "the token that vouches for
+                    # what this says NOW", and leaving it on the original writer would
+                    # attribute a value somebody else changed to whoever wrote the old one.
+                    asserted_by,
                     int(merged.pinned),
                     to_column(now),
                     text,
@@ -397,7 +402,7 @@ class SqlEntryStore:
                 account_id=account_id,
                 at=now,
                 action=Action.ENTRY_REVISED,
-                asserted_by=current.asserted_by,
+                asserted_by=asserted_by,
                 journal=journal,
                 entry=revised,
                 detail={"value": revised.value, "old_value": current.value}
@@ -408,19 +413,19 @@ class SqlEntryStore:
 
         return await self._db.transact(write)
 
-    async def confirm(
+    # account, entry, scope, clock, who is doing it, and how to record it.
+    async def confirm(  # noqa: PLR0913
         self,
         *,
         account_id: str,
         entry_id: str,
         granted: str | None,
         now: datetime,
+        asserted_by: str,
         journal: Journal,
     ) -> Entry:
         def write(connection: sqlite3.Connection) -> Entry:
-            current = _require(
-                _read_one_in(connection, entry_id, granted=granted, account=account_id)
-            )
+            _require(_read_one_in(connection, entry_id, granted=granted, account=account_id))
             # Only confirmed_at. Not updated_at, and not revision: nothing changed, and an
             # entry whose updated_at moved every time somebody said "yes, still true"
             # would sort to the top of a recency listing for not changing.
@@ -434,7 +439,7 @@ class SqlEntryStore:
                 account_id=account_id,
                 at=now,
                 action=Action.ENTRY_CONFIRMED,
-                asserted_by=current.asserted_by,
+                asserted_by=asserted_by,
                 journal=journal,
                 entry=confirmed,
                 detail=None,
@@ -443,19 +448,19 @@ class SqlEntryStore:
 
         return await self._db.transact(write)
 
-    async def forget(
+    # account, entry, scope, clock, who is doing it, and how to record it.
+    async def forget(  # noqa: PLR0913
         self,
         *,
         account_id: str,
         entry_id: str,
         granted: str | None,
         now: datetime,
+        asserted_by: str,
         journal: Journal,
     ) -> Entry:
         def write(connection: sqlite3.Connection) -> Entry:
-            current = _require(
-                _read_one_in(connection, entry_id, granted=granted, account=account_id)
-            )
+            _require(_read_one_in(connection, entry_id, granted=granted, account=account_id))
             connection.execute(
                 "UPDATE entries SET forgotten_at = ? WHERE entry_id = ?",
                 (to_column(now), entry_id),
@@ -475,7 +480,7 @@ class SqlEntryStore:
                 account_id=account_id,
                 at=now,
                 action=Action.ENTRY_FORGOTTEN,
-                asserted_by=current.asserted_by,
+                asserted_by=asserted_by,
                 journal=journal,
                 entry=forgotten,
                 detail=None,

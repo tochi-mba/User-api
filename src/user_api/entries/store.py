@@ -303,6 +303,7 @@ class EntryStore(Protocol):
         entry_id: str,
         granted: str | None,
         now: datetime,
+        asserted_by: str,
         pin_cap: int,
         scope_cap_granted: str | None,
         journal: Journal,
@@ -322,6 +323,12 @@ class EntryStore(Protocol):
         would make every correction reset the staleness clock, and the whole point of
         tracking staleness is to find the facts nobody has vouched for lately.
 
+        ``asserted_by`` moves to the reviser. It means "the token that vouches for what
+        this entry says *now*", so leaving it on the original writer after somebody else
+        changed the value would attribute the new content to whoever happened to write the
+        old. The event records the same audience, which is what makes the log answer "who
+        changed this" rather than "who first wrote it".
+
         Args:
             value: the new value for a field. Sentinel-defaulted rather than
                 ``None``-defaulted because ``None`` is a legal field value: "unset it" and
@@ -336,32 +343,38 @@ class EntryStore(Protocol):
         """
         ...
 
-    async def confirm(
+    # account, entry, scope, clock, who is doing it, and how to record it.
+    async def confirm(  # noqa: PLR0913
         self,
         *,
         account_id: str,
         entry_id: str,
         granted: str | None,
         now: datetime,
+        asserted_by: str,
         journal: Journal,
     ) -> Entry:
         """Record that a human said this is still true. Touches only ``confirmed_at``.
 
         The cheap half of the staleness story: ``?stale_before=`` finds what to ask about,
-        and this is what the answer costs. Deliberately not a revision -- nothing changed.
+        and this is what the answer costs. Deliberately not a revision -- nothing changed,
+        so ``asserted_by`` on the *entry* stays where it was and only the event records who
+        did the confirming.
 
         Raises:
             EntryNotFoundError: no such visible entry.
         """
         ...
 
-    async def forget(
+    # account, entry, scope, clock, who is doing it, and how to record it.
+    async def forget(  # noqa: PLR0913
         self,
         *,
         account_id: str,
         entry_id: str,
         granted: str | None,
         now: datetime,
+        asserted_by: str,
         journal: Journal,
     ) -> Entry:
         """Mark an entry forgotten. Invisible from every read path immediately.

@@ -391,6 +391,7 @@ class UserService:
             entry_id=entry_id,
             granted=identity.granted_scope,
             now=now,
+            asserted_by=identity.audience,
             pin_cap=self._config.max_pinned,
             scope_cap_granted=identity.granted_scope,
             journal=await self._journal(identity.account_id),
@@ -414,6 +415,7 @@ class UserService:
             entry_id=entry_id,
             granted=identity.granted_scope,
             now=self._clock.now(),
+            asserted_by=identity.audience,
             journal=await self._journal(identity.account_id),
         )
 
@@ -432,6 +434,7 @@ class UserService:
             entry_id=entry_id,
             granted=identity.granted_scope,
             now=now,
+            asserted_by=identity.audience,
             journal=await self._journal(identity.account_id),
         )
         await self._users.touch(identity.account_id, now=now)
