@@ -99,7 +99,8 @@ rather than on a lock cancellation can drop.
 and the single connection declines to use it, which is what makes a check-and-write pair
 indivisible. Every cap in this service -- entries, fields, pins, events -- is counted and
 enforced inside one of those transactions, so "count, then write" cannot go stale. The
-purge sweeper is a task in the same process and stops if it dies.
+purge sweeper is one task in that same process: a failed sweep is logged and retried on
+the next tick, and nothing at all covers the process not running.
 
 **`busy_timeout = 5000` is doing nothing most of the time.** With one connection there is
 nobody to be busy against, except another process that has opened the same file, which is
@@ -108,10 +109,10 @@ the case this service does not support.
 ## What would change our minds
 
 More than one process needing to write. Another replica, a worker outside the API, or a
-settings-api sharing this file rather than its own (ADR-0007 says it will have its own).
-That is a Postgres adapter, and the ports are what make it an adapter rather than a
-rewrite -- the same argument keyring's ADR-0012 makes, and the same one that would have to
-be cashed in here.
+settings-api that wrote into this file rather than serving its own store. That is a
+Postgres adapter, and the ports are what make it an adapter rather than a rewrite -- the
+same argument keyring's ADR-0012 makes, and the same one that would have to be cashed in
+here.
 
 Nothing about `synchronous` would change with it. If durability ever mattered more than
 write throughput here -- because the loss of a note turned out to cost more than saying it

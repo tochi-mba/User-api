@@ -106,9 +106,9 @@ table and an id space that never comes back, which at this volume is nothing.
 them empty, and on any given row either two or three of them are meaningless. `NOT NULL`,
 the thing that would say what is actually true of each, is unavailable to all five.
 
-**A CHECK constraint a reader has to parse.** Twelve lines of boolean that have to be read
+**A CHECK constraint a reader has to parse.** Nine lines of boolean that have to be read
 in full before you know what the table holds. That is a real tax on the next person, and
-it is why it is commented rather than left to speak for itself.
+it is why it carries a comment rather than being left to speak for itself.
 
 **Every query says which kind it means.** `entry_type = 'field'` turns up in predicates
 and in partial indexes that two tables would not have needed, and a query that forgets it
@@ -122,9 +122,9 @@ constraint is what makes that safe, and the safety is not visible in the type.
 ## What would change our minds
 
 A third kind of entry that shares fewer than half of the twelve. Something with its own
-lifecycle, or no provenance, or no place in search, would be paying for eleven columns it
-does not use in order to join a table it never queries with, and at that point it is its
-own table with its own index and the merge problem above becomes real rather than
+lifecycle, or no provenance, or no place in search, would be carrying most of those twelve
+as dead weight in order to sit in a table it never queries with, and at that point it is
+its own table with its own index and the merge problem above becomes real rather than
 hypothetical.
 
 Not a third kind that shares most of them. That is one more branch of the CHECK and one

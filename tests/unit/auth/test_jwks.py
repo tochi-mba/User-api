@@ -42,6 +42,9 @@ TIMEOUT_SECONDS = 5.0
 CONCURRENT_REQUESTS = 10
 FLOOD = 50
 
+SCHEDULER_TURNS = 8
+"""Passes through the event loop, enough for every queued request to reach the lock."""
+
 
 class MakeJwks(Protocol):
     """Builds a client against the fake keyring, closed when the test ends."""
@@ -66,6 +69,23 @@ def serving(status: int, body: bytes) -> httpx.MockTransport:
 
     def handle(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(status, content=body)
+
+    return httpx.MockTransport(handle)
+
+
+def parked(keyring: FakeKeyring, release: asyncio.Event) -> httpx.MockTransport:
+    """The fake keyring, answering nothing until the test lets it.
+
+    The concurrent test is about one interleaving: every request has arrived and none of
+    them has been answered. Nothing in a fake transport suspends on its own, so without
+    somewhere to park, the first fetch would finish before the second request had begun --
+    and ten requests would prove exactly what one request proves.
+    """
+    inner = keyring.transport()
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        await release.wait()
+        return await inner.handle_async_request(request)
 
     return httpx.MockTransport(handle)
 
@@ -168,11 +188,20 @@ class TestJwksCaching:
         each of them fetches its own copy of the same one -- so the moment keyring is
         busiest is the moment this service multiplies its requests to it.
         """
-        client = make_jwks()
+        release = asyncio.Event()
+        client = make_jwks(transport=parked(keyring, release))
+        requests = [
+            asyncio.create_task(client.key_for(thumbprint())) for _ in range(CONCURRENT_REQUESTS)
+        ]
+        for _ in range(SCHEDULER_TURNS):
+            await asyncio.sleep(0)
+        # Asserting none of them has finished is what makes the count mean something: it
+        # proves all ten really are in flight together, rather than having run one after
+        # another with nine of them reading a cache the first had already filled.
+        assert [request.done() for request in requests] == [False] * CONCURRENT_REQUESTS
 
-        keys = await asyncio.gather(
-            *(client.key_for(thumbprint()) for _ in range(CONCURRENT_REQUESTS))
-        )
+        release.set()
+        keys = await asyncio.gather(*requests)
 
         assert keyring.fetches == 1
         assert [key.key_id for key in keys] == [thumbprint()] * CONCURRENT_REQUESTS

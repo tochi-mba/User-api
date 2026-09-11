@@ -141,7 +141,7 @@ rather than from data.
 Evidence that false positives are common. If the accepted-sentence corpus starts growing
 by one-off exemption rather than by pattern -- a new regex per complaint -- that is the
 heuristic being the wrong shape, and the answer is probably an override that records the
-refusal and the insistence in the event log, rather than a fourth exemption.
+refusal and the insistence in the event log, rather than a third exemption.
 
 Evidence that false negatives matter more than assumed. If somebody finds a credential
 sitting in a record, the cheap next step is not a cleverer detector but wider coverage:
