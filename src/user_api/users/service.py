@@ -63,6 +63,7 @@ if TYPE_CHECKING:
     from user_api.auth.tokens import Identity
     from user_api.core.clock import Clock
     from user_api.core.config import Settings
+    from user_api.domain.settings import ErasureMode, UserSettings
     from user_api.entries.store import EntryStore
     from user_api.events.log import Event, EventLog
     from user_api.storage.database import Database
@@ -459,21 +460,39 @@ class UserService:
 
     # -- settings ----------------------------------------------------------------------
 
-    async def get_settings(self, identity: Identity) -> object:
+    async def get_settings(self, identity: Identity) -> UserSettings:
         """This account's choices, defaulted rather than absent."""
         return await self._settings.get(
             identity.account_id, default_grace_days=self._config.default_grace_days
         )
 
-    async def update_settings(self, identity: Identity, **changes: object) -> object:
-        """Change some settings. Never retroactive -- see the port for why that matters."""
+    async def update_settings(
+        self,
+        identity: Identity,
+        *,
+        erasure_mode: ErasureMode | None = None,
+        grace_days: int | None = None,
+        log_values: bool | None = None,
+    ) -> UserSettings:
+        """Change some settings. Never retroactive -- see the port for why that matters.
+
+        Spelled out rather than taking ``**changes``, which was the first shape and was
+        worse in a way worth recording: kwargs made the router's ``model_dump`` the only
+        thing deciding which settings exist, so a field renamed on the wire would sail
+        through to the store and fail there, at runtime, rather than here, at a type check.
+        """
         now = self._clock.now()
+        # A person may set a preference before writing anything at all -- "destroy things
+        # immediately from now on" is a reasonable first thing to say -- and the settings
+        # row has a foreign key to the record.
         await self._users.ensure(identity.account_id, now=now)
         return await self._settings.update(
             identity.account_id,
             now=now,
             default_grace_days=self._config.default_grace_days,
-            **changes,  # type: ignore[arg-type]
+            erasure_mode=erasure_mode,
+            grace_days=grace_days,
+            log_values=log_values,
         )
 
     # -- shared --------------------------------------------------------------------

@@ -112,6 +112,12 @@ ignore = [
 # non-zero (that is its contract), and it talks to a real server over real HTTP.
 "scripts/*" = ["T20", "S310", "PLR0915", "PLR2004"]
 "tests/**" = [
+    # A parametrised case supplies every name in the tuple, and a test asserting about
+    # one of them is not wrong for ignoring the other; a fixture requested purely for the
+    # state it sets up is not wrong either. The rule stays on for src/, where an unused
+    # argument means a signature nobody updated.
+    "ARG001",
+    "ARG002",
     "S101",    # asserts are the point
     "S105",    # test fixtures contain literal token-shaped strings on purpose
     "S106",

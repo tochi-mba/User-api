@@ -15,7 +15,6 @@ from user_api.api.dependencies import ContainerDep, IdentityDep
 from user_api.api.schemas.common import Problem
 from user_api.api.schemas.events import EventPage, EventResponse
 from user_api.api.schemas.settings import SettingsResponse, UpdateSettingsRequest
-from user_api.domain.settings import UserSettings
 
 router = APIRouter(prefix="/v1/user", tags=["settings"])
 
@@ -39,8 +38,7 @@ _PROBLEM: dict[int | str, dict[str, Any]] = {
 )
 async def get_settings(container: ContainerDep, identity: IdentityDep) -> SettingsResponse:
     """Read the settings."""
-    settings = await container.service.get_settings(identity)
-    return SettingsResponse.of(_as_settings(settings))
+    return SettingsResponse.of(await container.service.get_settings(identity))
 
 
 @router.put(
@@ -63,9 +61,13 @@ async def update_settings(
     request: UpdateSettingsRequest, container: ContainerDep, identity: IdentityDep
 ) -> SettingsResponse:
     """Change some settings."""
-    changes = request.model_dump(exclude_none=True)
-    settings = await container.service.update_settings(identity, **changes)
-    return SettingsResponse.of(_as_settings(settings))
+    settings = await container.service.update_settings(
+        identity,
+        erasure_mode=request.erasure_mode,
+        grace_days=request.grace_days,
+        log_values=request.log_values,
+    )
+    return SettingsResponse.of(settings)
 
 
 @router.get(
@@ -98,18 +100,3 @@ async def read_events(
         count=len(rendered),
         next_before=rendered[-1].sequence if rendered else None,
     )
-
-
-def _as_settings(value: object) -> UserSettings:
-    """Narrow what the service hands back.
-
-    The service returns ``object`` so that nothing above the ``SettingsStore`` port has to
-    name a concrete settings type -- which is what keeps the settings-api a drop-in second
-    adapter. This is the one place that narrowing happens, and it is a real check rather
-    than a cast so a future adapter returning the wrong shape fails here rather than three
-    frames later inside a response model.
-    """
-    if not isinstance(value, UserSettings):
-        msg = "the settings store returned something that is not a settings object"
-        raise TypeError(msg)
-    return value
