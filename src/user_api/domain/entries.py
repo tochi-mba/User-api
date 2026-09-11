@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from user_api.domain.errors import InvalidDescriptionError, InvalidNoteError
+
 if TYPE_CHECKING:
     from datetime import datetime
 
@@ -119,6 +121,54 @@ class Action(StrEnum):
     ENTRY_PURGED = "entry.purged"
     USER_DELETED = "user.deleted"
     SETTINGS_UPDATED = "settings.updated"
+
+
+MAX_DESCRIPTION_CHARS = 200
+"""Long enough to say what a key means, short enough that nobody pastes a document.
+
+The cap is doing real work. A description is returned by ``describe_schema`` for every key
+an account has, and that endpoint only stays cheap enough to call before inventing a key
+if its response cannot grow without bound.
+"""
+
+
+def validate_description(raw: str) -> str:
+    """Check a description and return it trimmed.
+
+    Required on create, which is the whole anti-sprawl mechanism on the read side: the
+    schema endpoint is only worth calling if what it returns says what each key *means*,
+    and it only says that if writing one made you say it.
+
+    Raises:
+        InvalidDescriptionError: empty, whitespace-only, or too long. The message names
+            the rule and never echoes the text.
+    """
+    description = raw.strip()
+    if not description:
+        msg = "a description is required: it is what lets the next write reuse this key"
+        raise InvalidDescriptionError(msg)
+    if len(description) > MAX_DESCRIPTION_CHARS:
+        msg = f"a description may be at most {MAX_DESCRIPTION_CHARS} characters"
+        raise InvalidDescriptionError(msg)
+    return description
+
+
+def validate_note_body(raw: str, *, max_chars: int) -> str:
+    """Check a note body and return it trimmed.
+
+    Raises:
+        InvalidNoteError: empty, whitespace-only, or longer than ``max_chars``. Refused
+            rather than truncated -- a note cut off mid-sentence is a note that says
+            something other than what somebody wrote, which is worse than no note.
+    """
+    body = raw.strip()
+    if not body:
+        msg = "a note needs a body"
+        raise InvalidNoteError(msg)
+    if len(body) > max_chars:
+        msg = f"a note may be at most {max_chars} characters"
+        raise InvalidNoteError(msg)
+    return body
 
 
 def new_entry_id() -> str:
