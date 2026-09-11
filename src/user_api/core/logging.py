@@ -197,6 +197,42 @@ def configure_logging(*, level: str, log_format: LogFormat) -> None:
     )
 
 
+class _NamedLogger:
+    """A logger that resolves against the configuration in force *when it is called*.
+
+    This exists because of a defect, and the defect is worth writing down because the
+    obvious spelling has it.
+
+    ``structlog.get_logger().bind(logger=name)`` binds **eagerly**: the proxy
+    ``get_logger()`` returns is lazy, but ``.bind()`` resolves it there and then against
+    whatever configuration is in force, and the resulting logger keeps that processor
+    chain for ever. Every module here does ``logger = get_logger(__name__)`` at import
+    time, which is necessarily *before* :func:`configure_logging` has run -- so every
+    module-level logger in the service was permanently wired to structlog's defaults.
+
+    The symptom was the bad kind. ``USER_API_LOG_FORMAT=json`` validated, was documented,
+    and did nothing: every record still came out in the human-readable console format, and
+    a deployment shipping those to an aggregator would have had a pile of unparseable
+    lines and no clue why. Only loggers created *after* startup honoured the setting, and
+    there are none.
+
+    Resolving per call fixes it and costs a dictionary lookup and a bind on each record,
+    at a volume of a few records per request. The alternative -- deferring every module's
+    logger behind a function call -- puts the burden on every call site instead, which is
+    a rule that holds until somebody forgets it.
+    """
+
+    __slots__ = ("_name",)
+
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    def __getattr__(self, method: str) -> Any:
+        # The bind happens here, on the way to `.info` or `.exception`, so it picks up
+        # whatever configure_logging last installed.
+        return getattr(structlog.get_logger().bind(logger=self._name), method)
+
+
 def get_logger(name: str) -> Any:
     """Return a logger tagged with ``name``.
 
@@ -206,4 +242,4 @@ def get_logger(name: str) -> Any:
     The return type is deliberately loose: structlog's filtering bound loggers are
     generated at configuration time and have no single static type.
     """
-    return structlog.get_logger().bind(logger=name)
+    return _NamedLogger(name)
