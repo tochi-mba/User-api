@@ -1,4 +1,4 @@
-# ADR-0011: one entries table for fields and notes
+# ADR-0011: One entries table for fields and notes
 
 **Status:** accepted.
 
