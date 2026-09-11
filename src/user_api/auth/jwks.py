@@ -143,9 +143,15 @@ class JwksClient:
         would have nothing to say on a fresh process -- which is the moment an operator
         most wants to know whether keyring is reachable.
 
-        Reports rather than raises. A health check that raised would be a health check
-        answering 500 while trying to tell somebody what is wrong, and the thing polling
-        it cannot read a traceback anyway.
+        Reports rather than raises, and that is why the ``except`` below is as wide as it
+        is. A health check that raised would answer 500 while trying to tell somebody what
+        is wrong, and the thing polling it cannot read a traceback anyway -- so a load
+        balancer would see the same 500 for "keyring is down" as for "this process is
+        broken", which are different things needing different people.
+
+        The wide catch is deliberate and is confined to this method. Everywhere else an
+        unexpected exception should propagate and become a 500 with a request id; here the
+        unexpected exception IS the thing being reported.
         """
         if self._fresh_keys() is not None:
             return True, None
@@ -154,6 +160,9 @@ class JwksClient:
             try:
                 await self._fetch()
             except KeyringUnreachableError:
+                return False, KEYS_UNAVAILABLE
+            except Exception:
+                logger.exception("jwks_health_check_failed")
                 return False, KEYS_UNAVAILABLE
         return True, None
 
