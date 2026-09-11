@@ -110,7 +110,7 @@ ignore = [
 "tests/fakes/*" = ["ARG002", "ASYNC109"]
 # An operational script, not library code: it prints (that is its output), it exits
 # non-zero (that is its contract), and it talks to a real server over real HTTP.
-"scripts/*" = ["T20", "S310", "PLR0915"]
+"scripts/*" = ["T20", "S310", "PLR0915", "PLR2004"]
 "tests/**" = [
     "S101",    # asserts are the point
     "S105",    # test fixtures contain literal token-shaped strings on purpose

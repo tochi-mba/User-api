@@ -29,3 +29,6 @@ var/
 .idea/
 .vscode/
 .DS_Store
+
+# import-linter's graph cache
+.import_linter_cache/

@@ -121,7 +121,11 @@ def start(app: FastAPI) -> Container:
     so a keyring that is down does not stop this service from starting -- these two are
     restarted together, and a startup dependency would turn one outage into two.
     """
-    container = Container.build(app.state.settings)
+    # A container already on the app is one a test built with its own clock and its own
+    # keyring transport. Honoured rather than replaced, because create_app building its
+    # own is what keeps production wiring in one place -- and a suite that could not
+    # substitute the clock could not test a grace period without waiting a month.
+    container = getattr(app.state, "prebuilt", None) or Container.build(app.state.settings)
     app.state.container = container
     container.start_sweeper()
 
