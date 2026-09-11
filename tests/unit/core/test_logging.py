@@ -164,18 +164,20 @@ class TestRedaction:
     def test_a_non_string_key_is_stringified_so_the_record_still_renders(self) -> None:
         # A JSON renderer cannot serialise an integer key. Stringifying here is what stops
         # a stray one from killing the log call that was carrying the error.
-        redacted = render({"payload": {1: "one", "body": SENTINEL}})
+        payload = render({"payload": {1: "one", "body": SENTINEL}})["payload"]
 
-        assert set(redacted["payload"]) == {"1", "body"}
+        assert isinstance(payload, dict)
+        assert set(payload) == {"1", "body"}
 
     def test_a_value_under_a_non_string_key_is_redacted_rather_than_name_checked(self) -> None:
         # Fails closed, and it has to. The name check runs on the key, and a key that is
         # not a string has to be rendered before it can be checked -- at which point
         # b"body" has become "b'body'", which matches no content name and walks straight
         # past the redactor carrying the thing it was supposed to catch.
-        redacted = render({"payload": {b"body": SENTINEL, 1: SENTINEL}})
+        payload = render({"payload": {b"body": SENTINEL, 1: SENTINEL}})["payload"]
 
-        assert list(redacted["payload"].values()) == [REDACTED, REDACTED]
+        assert isinstance(payload, dict)
+        assert list(payload.values()) == [REDACTED, REDACTED]
 
     def test_a_structure_deeper_than_the_cap_is_dropped_rather_than_walked(self) -> None:
         # Fails closed. A structure this deep is either a bug or an attempt to bury
