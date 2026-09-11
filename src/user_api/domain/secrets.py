@@ -121,8 +121,17 @@ _RUNS = re.compile(rf"\S{{{MIN_ENTROPY_RUN},}}")
 
 _HEX_COLOUR = re.compile(r"^#?[0-9a-fA-F]{3,8}$")
 _GIT_SHA = re.compile(r"^[0-9a-f]{7,40}$")
-_URLISH = re.compile(r"^[a-z][a-z0-9+.-]*://|^www\.|@", re.IGNORECASE)
 _CREDENTIAL_ALPHABET = re.compile(r"^[A-Za-z0-9+/=_-]+$")
+"""The characters a base64 or hex credential is built from, and nothing else.
+
+This is also, incidentally, the URL exemption. There was an explicit one here -- a check
+for ``://``, a leading ``www.`` or an ``@`` -- added because a long article URL is the
+single most common long space-free run in prose about a person. It was **unreachable**:
+every character those patterns need is a colon, a dot or an at-sign, and this alphabet
+admits none of the three, so a URL has already been let through one line earlier. It was
+removed rather than left in as documentation, because the coverage gate is what found it
+and a branch no input can take is a branch that stops being true without anybody noticing.
+"""
 _HAS_DIGIT = re.compile(r"\d")
 _HAS_UPPER = re.compile(r"[A-Z]")
 _HAS_LOWER = re.compile(r"[a-z]")
@@ -164,12 +173,6 @@ def _is_high_entropy(run: str) -> bool:
     long, alphabet-legal and diverse without being a secret.
     """
     if not _CREDENTIAL_ALPHABET.match(run):
-        return False
-
-    # A URL, an email address, or anything with an @ in it. Long URLs are the single most
-    # common long space-free run in prose about a person -- an article they liked, a
-    # calendar invite -- and their path segments are base64-legal.
-    if _URLISH.search(run):
         return False
 
     # Hex is its own case: a git SHA and a colour are both long, both alphabet-legal, and
