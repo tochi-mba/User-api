@@ -222,7 +222,13 @@ class SetFieldRequest(BaseModel):
         default=None, max_length=500, description="How you came to know it."
     )
     scopes: ScopeList
-    sensitivity: Sensitivity = Field(default=Sensitivity.NORMAL)
+    sensitivity: Sensitivity = Field(
+        default=Sensitivity.NORMAL,
+        description=(
+            "'sensitive' means do not volunteer this unprompted. It is a hint about "
+            "conversation, NOT access control -- scopes are access control."
+        ),
+    )
     pinned: bool = Field(
         default=False,
         description=(
@@ -249,14 +255,37 @@ class WriteNoteRequest(BaseModel):
         },
     )
 
-    body: str = Field(min_length=1, max_length=4000, description="What to remember.")
-    note_kind: NoteKind = Field(description="episode, observation, or lesson.")
+    body: str = Field(
+        min_length=1,
+        max_length=4000,
+        description=(
+            "What to remember, in their words where you have them. Anything that looks "
+            "like a credential is refused -- those belong in keyring."
+        ),
+    )
+    note_kind: NoteKind = Field(
+        description=(
+            "'episode' (something happened), 'observation' (something noticed), or "
+            "'lesson' (something to do differently). Pick honestly: the kind is what "
+            "makes filtering for lessons worth doing a year from now."
+        )
+    )
     description: DescriptionField
-    source: Source = Field(default=Source.INFERRED)
-    source_detail: str | None = Field(default=None, max_length=500)
+    source: Source = Field(
+        default=Source.INFERRED,
+        description="Where you got this. 'inferred' is the honest default for a note.",
+    )
+    source_detail: str | None = Field(
+        default=None, max_length=500, description="How you came to know it."
+    )
     scopes: ScopeList
-    sensitivity: Sensitivity = Field(default=Sensitivity.NORMAL)
-    pinned: bool = Field(default=False)
+    sensitivity: Sensitivity = Field(
+        default=Sensitivity.NORMAL,
+        description="'sensitive' means do not volunteer this unprompted.",
+    )
+    pinned: bool = Field(
+        default=False, description="Include in the always-load block. Capped per account."
+    )
 
 
 class ReviseEntryRequest(BaseModel):
@@ -281,13 +310,48 @@ class ReviseEntryRequest(BaseModel):
             "to leave it alone."
         ),
     )
-    body: str | None = Field(default=None, min_length=1, max_length=4000)
-    description: str | None = Field(default=None, min_length=1, max_length=200)
-    source: Source | None = Field(default=None)
-    source_detail: str | None = Field(default=None, max_length=500)
-    scopes: list[str] | None = Field(default=None, max_length=8)
-    sensitivity: Sensitivity | None = Field(default=None)
-    pinned: bool | None = Field(default=None)
+    body: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=4000,
+        description="Note only: replaces what was written down. Omit to leave it alone.",
+    )
+    description: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Replaces what this entry is for. Omit to leave it alone.",
+    )
+    source: Source | None = Field(
+        default=None,
+        description=(
+            "Where the NEW content came from. Be honest: correcting something you "
+            "inferred is still 'inferred'."
+        ),
+    )
+    source_detail: str | None = Field(
+        default=None, max_length=500, description="Free-text provenance note."
+    )
+    scopes: list[str] | None = Field(
+        default=None,
+        max_length=8,
+        description=(
+            "Replaces the entry's compartments wholesale rather than adding to them. You "
+            "may only use the scope your own token grants; an empty list makes the entry "
+            "visible to every valid token."
+        ),
+    )
+    sensitivity: Sensitivity | None = Field(
+        default=None,
+        description=(
+            "'sensitive' means do not volunteer this unprompted. A hint about "
+            "conversation, not access control."
+        ),
+    )
+    pinned: bool | None = Field(
+        default=None,
+        description="Whether this belongs in the always-load block. The set is capped.",
+    )
 
 
 class EntryPage(BaseModel):

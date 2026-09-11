@@ -1060,24 +1060,26 @@ def _read_written(connection: sqlite3.Connection, entry_id: str) -> Entry | None
 
 
 def _read_one_in(
-    connection: sqlite3.Connection,
-    entry_id: str,
-    *,
-    granted: str | None,
-    account: str | None = None,
-    include_forgotten: bool = False,
+    connection: sqlite3.Connection, entry_id: str, *, granted: str | None, account: str
 ) -> Entry | None:
-    """One entry by id, or ``None`` if it is absent, elsewhere, forgotten or out of scope."""
-    clauses = ["e.entry_id = ?"]
-    parameters: list[object] = [entry_id]
-    if account is not None:
-        clauses.append("e.account_id = ?")
-        parameters.append(account)
-    if not include_forgotten:
-        clauses.append(_LIVE)
+    """One live entry by id, or ``None`` if it is absent, elsewhere, forgotten or out of scope.
 
+    The account is required rather than optional, and there is no way to ask for a
+    forgotten one. Both used to be parameters and both had exactly one value at every call
+    site -- the coverage gate is what said so, by reporting the other arm of each branch as
+    unreachable.
+
+    Neither absence costs anything. Reading back a write goes through
+    :func:`_read_written`, which deliberately applies no filter at all; a caller that wants
+    forgotten entries goes through :meth:`SqlEntryStore.search` with
+    ``include_forgotten``. What is left here is the one question every caller was actually
+    asking: is there a live entry with this id that this token may see.
+    """
     found = _read_many_in(
-        connection, where=" AND ".join(clauses), parameters=tuple(parameters), granted=granted
+        connection,
+        where=f"e.entry_id = ? AND e.account_id = ? AND {_LIVE}",
+        parameters=(entry_id, account),
+        granted=granted,
     )
     return found[0] if found else None
 

@@ -62,6 +62,26 @@ class UpdateSettingsRequest(BaseModel):
         json_schema_extra={"examples": [{"erasure_mode": "immediate"}]},
     )
 
-    erasure_mode: ErasureMode | None = Field(default=None)
-    grace_days: int | None = Field(default=None, ge=0, le=3650)
-    log_values: bool | None = Field(default=None)
+    erasure_mode: ErasureMode | None = Field(
+        default=None,
+        description=(
+            "What DELETE on one entry does: 'grace', 'immediate' or 'tombstone'. Omit to "
+            "leave it alone. Never ask for this on your own initiative."
+        ),
+    )
+    grace_days: int | None = Field(
+        default=None,
+        ge=0,
+        le=3650,
+        description=(
+            "How long a forgotten entry stays recoverable in 'grace' mode. Zero still "
+            "means 'at the next sweep' rather than 'now' -- that is 'immediate'."
+        ),
+    )
+    log_values: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the change log keeps old values. Off by default, because the log is "
+            "a second copy of the same personal data."
+        ),
+    )
