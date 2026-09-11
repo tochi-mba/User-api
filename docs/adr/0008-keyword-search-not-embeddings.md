@@ -99,8 +99,9 @@ on top of this one.
 credentials over and ADR-0003 is honest about. An embedding index would have been a third.
 
 **The index is shared across accounts.** `MATCH` alone finds other people's rows, so
-account isolation lives in the outer `WHERE` of `_search_ranked` rather than in the index,
-and there is a test named after exactly that.
+account isolation lives in the outer `WHERE` of `_search_ranked` rather than in the index.
+That is one predicate standing between one person's search and another person's record,
+and the comment above it says so in capitals.
 
 ## What would change our minds
 

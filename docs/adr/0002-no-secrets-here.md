@@ -65,10 +65,14 @@ bits per character, measured over the run itself rather than assumed from its al
 That last detail is what separates a token from `aB1aB1aB1aB1...`, which is mixed case,
 alphabet-legal and entirely predictable.
 
-Three exemptions are checked before any of that, and each was added for a shape that is
-long, alphabet-legal and diverse without being a secret: anything URL-shaped (a
-`scheme://` prefix, a leading `www.`, or an `@` anywhere in it), a hex colour, and a git
-SHA of 7 to 40 lowercase hex characters.
+Two exemptions sit inside the heuristic, after the alphabet condition and before the rest,
+and both are for shapes that are long, alphabet-legal and diverse without being a secret:
+a hex colour, and a git SHA of 7 to 40 lowercase hex characters. A third, for URLs, was
+written and then removed: it could never run, because the alphabet check one line above
+admits no colon, dot or at-sign, so a URL has already been let through by the time such a
+check is reached. The URL sentences in the accepted corpus pass without it. It went rather
+than staying as documentation, on the grounds that a branch no input can take is a branch
+that stops being true without anybody noticing.
 
 A value that is not a string is rendered through `searchable_text` first, so a credential
 buried in a list or an object is caught as readily as one written plainly.

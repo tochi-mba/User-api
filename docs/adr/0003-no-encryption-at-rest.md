@@ -49,7 +49,7 @@ and without leaving much trace. None of them reads a 0600 one.
 Plainly, and in full:
 
 - **A stolen disk**, a lost laptop, or a machine sold or recycled without wiping.
-- **A backup copied somewhere else.** The `VACUUM INTO` copy the operations guide asks for
+- **A backup copied somewhere else.** The `VACUUM INTO` copy the backup procedure asks for
   is another plaintext SQLite database, and it is usually the one that ends up somewhere
   with laxer permissions than the original.
 - **A filesystem or volume snapshot**, and anything replicating blocks off the host.

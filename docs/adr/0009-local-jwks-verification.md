@@ -89,7 +89,9 @@ preference about spelling. Leaving the list open is the classic JWT failure in t
 flavours: a caller sends `alg: none` and nothing checks the signature at all, or
 downgrades RS256 to HS256 and signs with the public key it fetched from the JWKS endpoint
 -- an endpoint published for anybody to fetch, so "only keyring has the key" was never
-true of that half of it. There are tests for both.
+true of that half of it. `tests/fakes/keyring.py` mints both forgeries for the suite: an
+HS256 token signed with the published public key, and an `alg: none` token with an empty
+signature.
 
 The same instinct is why the document is parsed into `jwt.PyJWK` objects rather than
 through `RSAAlgorithm.from_jwk`, which is one line shorter. `from_jwk` assumes every key
