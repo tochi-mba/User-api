@@ -76,12 +76,36 @@ _PREFIXES: tuple[tuple[str, str], ...] = (
     ("ASIA", "an AWS temporary access key id"),
     ("AIza", "a Google API key"),
 )
-"""Known prefixes, checked case-sensitively.
+"""Known prefixes, checked case-sensitively and only at the start of a token.
 
-Case matters: ``aizawa`` is a surname and ``AIza`` is a Google API key, and folding the
-case would refuse somebody's friend. The AWS and Google prefixes are the ones where this
-is load-bearing.
+Two rules, and both were added in response to a sentence that should have been accepted.
+
+**Case matters.** ``aizawa`` is a surname and ``AIza`` is a Google API key, and folding the
+case would refuse somebody's friend.
+
+**Position matters more.** Matched as a bare substring, ``sk-`` refuses "They are
+risk-averse with money", and so does every "task-based", "desk-bound" and "disk-encrypted"
+sentence anybody will ever write. The prefix must therefore begin a token -- preceded by
+the start of the string or by something that is not alphanumeric -- and be followed by
+enough credential-shaped characters to be one. There is no override, so a false positive
+here is a memory somebody simply cannot write down.
 """
+
+MIN_PREFIXED_SUFFIX = 8
+"""Characters a known prefix must be followed by before it reads as a credential.
+
+Every real token of these kinds carries far more than eight. A bare ``sk-`` at the start of
+a word is somebody's abbreviation.
+"""
+
+_PREFIXED = tuple(
+    (
+        re.compile(rf"(?<![A-Za-z0-9]){re.escape(prefix)}[A-Za-z0-9_\-]{{{MIN_PREFIXED_SUFFIX},}}"),
+        description,
+    )
+    for prefix, description in _PREFIXES
+)
+"""The prefixes as anchored patterns. Built once, at import, rather than per call."""
 
 _PRIVATE_KEY = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 
@@ -115,8 +139,8 @@ def looks_like_a_credential(text: str) -> str | None:
     the value out of the store; echoing it into an error body and a log line would defeat
     that at the moment of success.
     """
-    for prefix, description in _PREFIXES:
-        if prefix in text:
+    for pattern, description in _PREFIXED:
+        if pattern.search(text):
             return f"this contains what looks like {description}"
 
     if _PRIVATE_KEY.search(text):

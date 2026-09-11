@@ -78,10 +78,13 @@ def validate_value(value: object, *, max_bytes: int, max_depth: int) -> ValueTyp
     _check_breadth(value)
 
     try:
-        encoded = json.dumps(value, ensure_ascii=False)
+        # allow_nan=False is load-bearing and is easy to leave off. By default json.dumps
+        # renders NaN and Infinity as the bare tokens ``NaN`` and ``Infinity``, which are
+        # not JSON -- Python reads them back, and every other reader in the world does not.
+        # Without this a stored value would come back fine through this service and break
+        # the moment anything else parsed the response.
+        encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
     except (TypeError, ValueError) as exc:
-        # Reachable for things json.dumps rejects that the type check above admits --
-        # NaN and Infinity are floats, and are not JSON.
         msg = "a field value must be JSON-serializable"
         raise InvalidValueError(msg) from exc
 
