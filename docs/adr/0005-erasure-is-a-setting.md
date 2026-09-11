@@ -164,10 +164,14 @@ entry is invisible and recoverable, which means it is on disk and would be in a 
 That is the trade `grace` makes, and it is why `immediate` exists.
 
 **"Now" means "on the next sweep".** The sweeper runs hourly by default
-(`purge_interval_seconds`), and it sleeps before its first pass. A grace of zero days
-therefore does not mean "immediately" -- it means the cutoff is now, so the entry goes on
-the next sweep, up to an hour later. Somebody who means *now* wants `immediate` mode,
-which does not wait for a sweep at all.
+(`purge_interval_seconds`). A grace of zero days therefore does not mean "immediately" --
+it means the cutoff is now, so the entry goes on the next sweep, up to an hour later.
+Somebody who means *now* wants `immediate` mode, which does not wait for a sweep at all.
+
+The sweep happens *before* the wait rather than after it, so a restart does not postpone
+what was already due. The other ordering has a gap nobody would guess at from outside:
+entries whose grace period expired while the service was stopped would wait a further
+whole interval after it came back.
 
 **A sweep is bounded.** 500 entries per account per pass, so one account with a large
 backlog cannot hold the single database thread for an unbounded stretch. The remainder

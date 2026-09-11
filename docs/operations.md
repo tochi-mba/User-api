@@ -176,8 +176,11 @@ copied from sitting in the log. Only `TRUNCATE` empties it. The measurement is i
 sentinel.
 
 **The sweeper runs hourly** (`USER_API_PURGE_INTERVAL_SECONDS`, 3600 by default) and
-**sleeps before its first pass**, so a freshly started process purges nothing for an hour.
-Each pass asks which accounts hold a forgotten entry, reads each one's settings, skips the
+**sweeps before it waits**, so a restart does not postpone what was already due. That
+ordering matters more than it looks: the other way round, entries whose grace period
+expired while the service was stopped would sit there for a further whole hour after it
+came back, and somebody who deleted something yesterday and restarted this morning is
+entitled to have it gone this morning. Each pass asks which accounts hold a forgotten entry, reads each one's settings, skips the
 accounts on `tombstone`, and purges up to 500 entries per account -- bounded so one account
 with a large backlog cannot hold the single database thread for an unbounded stretch. The
 remainder waits for the next hour. The checkpoint runs once per sweep, not once per entry,
