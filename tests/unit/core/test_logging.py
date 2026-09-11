@@ -166,7 +166,16 @@ class TestRedaction:
         # a stray one from killing the log call that was carrying the error.
         redacted = render({"payload": {1: "one", "body": SENTINEL}})
 
-        assert redacted["payload"] == {"1": "one", "body": REDACTED}
+        assert set(redacted["payload"]) == {"1", "body"}
+
+    def test_a_value_under_a_non_string_key_is_redacted_rather_than_name_checked(self) -> None:
+        # Fails closed, and it has to. The name check runs on the key, and a key that is
+        # not a string has to be rendered before it can be checked -- at which point
+        # b"body" has become "b'body'", which matches no content name and walks straight
+        # past the redactor carrying the thing it was supposed to catch.
+        redacted = render({"payload": {b"body": SENTINEL, 1: SENTINEL}})
+
+        assert list(redacted["payload"].values()) == [REDACTED, REDACTED]
 
     def test_a_structure_deeper_than_the_cap_is_dropped_rather_than_walked(self) -> None:
         # Fails closed. A structure this deep is either a bug or an attempt to bury

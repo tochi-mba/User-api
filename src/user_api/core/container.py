@@ -142,9 +142,17 @@ class Container:
         await self.database.aclose()
 
     async def _sweep_forever(self) -> None:
+        """Sweep, then wait, rather than wait, then sweep.
+
+        The other order has a gap nobody would guess at from the outside: entries whose
+        grace period expired while the service was stopped would sit there for a further
+        whole interval after it came back, because the first thing the loop did was sleep
+        for an hour. A person who deleted something yesterday and restarted the service
+        this morning is entitled to have it gone this morning.
+        """
         while True:
-            await asyncio.sleep(self.settings.purge_interval_seconds)
             await self._sweep_guarded()
+            await asyncio.sleep(self.settings.purge_interval_seconds)
 
     async def _sweep_guarded(self) -> None:
         """Run one sweep, surviving any failure.

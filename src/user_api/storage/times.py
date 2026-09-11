@@ -10,9 +10,16 @@ comparison, in a code path far from the store that produced it.
 
 **Lexicographic order matches chronological order.** Cursor pagination, the ``updated_at``
 ordering, ``?stale_before=`` and the purge sweep all sort and compare on these columns, in
-SQL, as text. That only works because the format is fixed width: a stamp whose
-microseconds were omitted when zero would sort *after* one that kept them, and a cursor
-would then skip a row or return one twice.
+SQL, as text, and a cursor that compared them wrongly would skip a row or return one
+twice. That only works because the format is fixed width.
+
+It is worth being precise about why, because the obvious example is wrong. In *this*
+encoding, a stamp that omitted its zero microseconds would still sort correctly: the
+offset suffix follows, ``+`` (0x2B) sorts below ``.`` (0x2E), and ``.000000`` is the
+smallest fraction of its second either way. The guarantee is not that this particular
+omission is harmless; it is that **no** variation in width can arise, so nobody has to
+work out whether the next one is. Change the suffix to ``Z`` and the omission breaks the
+ordering immediately.
 
 Both are pinned by tests, because both fail silently.
 """

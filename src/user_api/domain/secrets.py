@@ -18,11 +18,20 @@ write down. That asymmetry sets the tuning: a missed credential is a mistake the
 still correct, and a wrongly refused sentence is a feature that does not work.
 
 So the entropy rule below demands *all* of length, a credential-shaped alphabet, high
-character diversity and no spaces, and even then it exempts the shapes that keep coming up
-in real prose: hex colours, git hashes, URLs, postcodes, phone numbers. The specification
-for all of this is the pair of corpora in ``tests/unit/domain/test_secrets.py`` -- sentences
-that must be accepted, and credential shapes that must be refused. Change the heuristic and
-the corpora are what tell you whether you made it better or just different.
+character diversity, three character classes and genuine per-character entropy, and even
+then it carves out the two shapes that keep coming up in real prose and pass every one of
+those: a git hash and a hex colour.
+
+Most of the things a reader expects to see exempted are not, because they never reach the
+rule. A URL, an email address, a postcode and a phone number each contain a character the
+credential alphabet does not admit -- a colon, an at-sign, a space -- so they are gone one
+line earlier. There *was* an explicit URL exemption here; it was unreachable for exactly
+that reason and was removed rather than left in as a comfort.
+
+The specification for all of this is the pair of corpora in
+``tests/unit/domain/test_secrets.py`` -- sentences that must be accepted, and credential
+shapes that must be refused. Change the heuristic and the corpora are what tell you
+whether you made it better or just different.
 """
 
 from __future__ import annotations

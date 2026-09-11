@@ -285,7 +285,7 @@ class UserService:
             max_depth=self._config.max_value_depth,
         )
         described = validate_description(description)
-        _refuse_credentials(value)
+        _refuse_credentials(value, described, source_detail)
         self._check_scopes(scopes, identity)
 
         now = self._clock.now()
@@ -334,7 +334,7 @@ class UserService:
         """Append a note. Always creates -- notes have no natural key."""
         text = validate_note_body(body, max_chars=self._config.max_note_chars)
         described = validate_description(description)
-        _refuse_credentials(text)
+        _refuse_credentials(text, described, source_detail)
         self._check_scopes(scopes, identity)
 
         now = self._clock.now()
@@ -387,6 +387,7 @@ class UserService:
             _refuse_credentials(body)
         if description is not None:
             description = validate_description(description)
+        _refuse_credentials(description, source_detail)
         if scopes is not None:
             self._check_scopes(scopes, identity)
 
@@ -561,18 +562,27 @@ def _found(entry: Entry | None) -> Entry:
     return entry
 
 
-def _refuse_credentials(value: object) -> None:
+def _refuse_credentials(*parts: object) -> None:
     """Refuse anything that looks like a secret, naming where it belongs instead.
+
+    Every part of a write goes through this, not only the obvious one. That was a real
+    gap: a field's ``search_text`` is its key, its **description** and its value, and a
+    note's is its description and its body -- so a credential pasted into a description
+    was stored *and indexed*, which is the worst of the three places it could have gone.
+    ``source_detail`` is free text a writer supplies and gets the same treatment.
 
     Applied to the rendered text of a value rather than to strings only, so a credential
     hidden inside a list or an object is caught as readily as one written plainly. keyring
     is named in the message because the caller is a model that will otherwise try again
     with the same value phrased differently.
     """
-    reason = looks_like_a_credential(value if isinstance(value, str) else searchable_text(value))
-    if reason is not None:
-        msg = f"{reason}; {KEYRING_ADVICE}"
-        raise CredentialRefusedError(msg)
+    for part in parts:
+        if part is None:
+            continue
+        reason = looks_like_a_credential(part if isinstance(part, str) else searchable_text(part))
+        if reason is not None:
+            msg = f"{reason}; {KEYRING_ADVICE}"
+            raise CredentialRefusedError(msg)
 
 
 def _cursor(raw: str | None, *, expected: Ordering) -> Cursor | None:

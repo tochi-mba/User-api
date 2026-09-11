@@ -130,8 +130,16 @@ def _redact_container(value: object, *, depth: int) -> Any:
         return REDACTED
 
     if isinstance(value, dict):
+        # A key that is not a string is redacted wholesale rather than rendered and then
+        # name-checked. `{b"body": ...}` stringifies to `"b'body'"`, which matches no
+        # content name and would have walked straight past the redactor. Every call site
+        # in this service uses string keys, so failing closed here costs nothing and
+        # removes a way in.
         return {
-            str(key): _redact_value(str(key), item, depth=depth + 1) for key, item in value.items()
+            str(key): (
+                _redact_value(key, item, depth=depth + 1) if isinstance(key, str) else REDACTED
+            )
+            for key, item in value.items()
         }
     return [_redact_container(item, depth=depth + 1) for item in value]
 

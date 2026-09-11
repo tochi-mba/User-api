@@ -185,8 +185,11 @@ class EntryResponse(BaseModel):
 class SetFieldRequest(BaseModel):
     """What ``PUT /v1/user/fields/{key}`` accepts.
 
-    Note what is **not** here: ``asserted_by``. It comes from the token and a body
-    claiming otherwise is ignored, which there is a test for.
+    Note what is **not** here: ``asserted_by``. It is derived from the verified token, and
+    because this model forbids unknown fields a body that tries to supply one is rejected
+    outright with a 422 rather than quietly ignored. Both end the same way -- the column
+    can only ever hold the token's audience -- but the caller is told, which is the
+    better of the two.
     """
 
     model_config = ConfigDict(
