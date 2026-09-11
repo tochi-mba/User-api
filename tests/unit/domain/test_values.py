@@ -233,13 +233,13 @@ class TestValuesJsonCannotRepresent:
     def test_a_float_json_cannot_represent_is_refused_before_it_reaches_the_store(
         self, value: float
     ) -> None:
-        """NaN and the infinities are floats and are not JSON.
+        """NaN and the infinities are floats, and are not JSON.
 
-        This is the failing test described under BUGS FOUND. ``json.dumps`` defaults to
-        ``allow_nan=True`` and emits the bare word ``NaN``, so the guard in
-        :func:`validate_value` never fires and the value is written. Starlette renders
-        responses with ``allow_nan=False``, so every later read of that field is a 500 --
-        a write that succeeds and poisons the field it was written to.
+        ``json.dumps`` renders them as the bare tokens ``NaN`` and ``Infinity`` unless it
+        is told not to, and Python reads those back happily -- so a value stored this way
+        looks correct from inside this service and breaks in every other reader, starting
+        with the response serializer, which refuses them. This is the arm of the
+        try/except that the comment above it always believed it was catching.
         """
         with pytest.raises(InvalidValueError):
             validate_value(value, max_bytes=GENEROUS_BYTES, max_depth=GENEROUS_DEPTH)

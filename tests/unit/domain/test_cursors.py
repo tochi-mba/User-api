@@ -28,10 +28,7 @@ URL_SAFE = set(string.ascii_letters + string.digits + "-_")
 """Everything that may appear in a cursor, which is base64url with the padding removed."""
 
 MISMATCHED_PAIRS = [
-    (issued, walked)
-    for issued in Ordering
-    for walked in Ordering
-    if issued is not walked
+    (issued, walked) for issued in Ordering for walked in Ordering if issued is not walked
 ]
 
 
@@ -80,9 +77,7 @@ class TestOpacity:
         # A caller that can read a cursor is a caller that will construct one, and then
         # the ordering tag stops being a safety check and starts being a thing to work
         # around.
-        encoded = Cursor(
-            ordering=Ordering.RECENT, sort_key=TIMESTAMP, entry_id=ENTRY_ID
-        ).encode()
+        encoded = Cursor(ordering=Ordering.RECENT, sort_key=TIMESTAMP, entry_id=ENTRY_ID).encode()
 
         assert ENTRY_ID not in encoded
         assert TIMESTAMP not in encoded
@@ -179,9 +174,7 @@ class TestMalformedCursors:
             decode_cursor(encoded_payload(payload), expected=Ordering.RECENT)
 
     @pytest.mark.parametrize("version", [0, 2, "1", None, 1.5])
-    def test_a_cursor_from_another_version_of_the_payload_is_refused(
-        self, version: object
-    ) -> None:
+    def test_a_cursor_from_another_version_of_the_payload_is_refused(self, version: object) -> None:
         # A cursor is short-lived by nature -- nobody bookmarks page four -- so refusing
         # an old one outright is cheaper than a compatibility shim nobody will remove.
         raw = encoded_payload({"v": version, "o": "recent", "k": TIMESTAMP, "i": ENTRY_ID})
