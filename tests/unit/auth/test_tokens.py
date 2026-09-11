@@ -319,9 +319,7 @@ class TestAlgorithmConfusion:
         with pytest.raises(AuthenticationError):
             await verifier.verify(forge_unsigned())
 
-    async def test_the_forgeries_are_otherwise_perfect_tokens(
-        self, verifier: TokenVerifier
-    ) -> None:
+    def test_the_forgeries_are_otherwise_perfect_tokens(self) -> None:
         """What the two tests above would be worth without this one.
 
         Every claim in both forgeries is the claim a good token carries, and each names a
@@ -407,7 +405,7 @@ class TestBadKid:
         with pytest.raises(AuthenticationError):
             await verifier.verify(mint(kid="a-key-id-nobody-published"))
 
-    async def test_a_malformed_key_id_is_refused_before_a_single_key_is_fetched(
+    async def test_a_token_with_no_key_id_is_refused_before_anything_is_fetched(
         self, verifier: TokenVerifier, keyring: FakeKeyring
     ) -> None:
         """The id is read first, so a token that has none costs keyring nothing.

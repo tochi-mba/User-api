@@ -305,7 +305,6 @@ class EntryStore(Protocol):
         now: datetime,
         asserted_by: str,
         pin_cap: int,
-        scope_cap_granted: str | None,
         journal: Journal,
         value: object | _Unset = UNSET,
         body: str | None = None,
@@ -323,6 +322,14 @@ class EntryStore(Protocol):
         would make every correction reset the staleness clock, and the whole point of
         tracking staleness is to find the facts nobody has vouched for lately.
 
+        The entry returned is read back **without** the visibility filter, because you may
+        always read what you just wrote. A revision that narrows an entry's scopes past
+        what the writer holds would otherwise make the row invisible to the writer between
+        the write and the read, and the store would report "no such entry" for a write that
+        had just succeeded. Refusing that write is the *service's* job and it does refuse
+        it -- see :func:`user_api.domain.scopes.check_writable` -- which is the right place
+        for an authorisation rule to live.
+
         ``asserted_by`` moves to the reviser. It means "the token that vouches for what
         this entry says *now*", so leaving it on the original writer after somebody else
         changed the value would attribute the new content to whoever happened to write the
@@ -333,10 +340,6 @@ class EntryStore(Protocol):
             value: the new value for a field. Sentinel-defaulted rather than
                 ``None``-defaulted because ``None`` is a legal field value: "unset it" and
                 "leave it alone" are different requests and must be expressible as such.
-            scope_cap_granted: what the token may widen scopes to. Passed separately from
-                ``granted`` so the check reads as what it is -- a write rule, not a read
-                rule -- at the one call site where they could ever differ.
-
         Raises:
             EntryNotFoundError: no such visible entry.
             LimitExceededError: pinning this would pass ``pin_cap``.

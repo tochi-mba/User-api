@@ -235,7 +235,7 @@ class SqlEntryStore:
             )
             _replace_scopes(connection, existing["entry_id"], scopes)
             _index(connection, seq=existing["seq"], text=text)
-            replaced = _require(_read_one_in(connection, existing["entry_id"], granted=granted))
+            replaced = _require(_read_written(connection, existing["entry_id"]))
             self._log(
                 connection,
                 account_id=account_id,
@@ -321,7 +321,6 @@ class SqlEntryStore:
         now: datetime,
         asserted_by: str,
         pin_cap: int,
-        scope_cap_granted: str | None,
         journal: Journal,
         value: object | _Unset = UNSET,
         body: str | None = None,
@@ -392,11 +391,7 @@ class SqlEntryStore:
                 _replace_scopes(connection, entry_id, scopes)
             _index(connection, seq=_seq_of(connection, entry_id), text=text)
 
-            # Re-read with the scope the write was permitted under rather than the one the
-            # read used. They are the same everywhere today; passing it explicitly is what
-            # keeps a future "widen this entry's scopes" from returning None and looking
-            # like the entry vanished mid-request.
-            revised = _require(_read_one_in(connection, entry_id, granted=scope_cap_granted))
+            revised = _require(_read_written(connection, entry_id))
             self._log(
                 connection,
                 account_id=account_id,
@@ -433,7 +428,7 @@ class SqlEntryStore:
                 "UPDATE entries SET confirmed_at = ? WHERE entry_id = ?",
                 (to_column(now), entry_id),
             )
-            confirmed = _require(_read_one_in(connection, entry_id, granted=granted))
+            confirmed = _require(_read_written(connection, entry_id))
             self._log(
                 connection,
                 account_id=account_id,
@@ -468,9 +463,7 @@ class SqlEntryStore:
             # The search row stays. ?include_forgotten=true is how somebody reviews what
             # they asked to be forgotten, and that has to keep working with a query in it.
             # The index row goes at purge, which is where forgotten becomes gone.
-            forgotten = _require(
-                _read_one_in(connection, entry_id, granted=granted, include_forgotten=True)
-            )
+            forgotten = _require(_read_written(connection, entry_id))
             # Logged without values whatever the account's setting says. The record that
             # something was forgotten is the one event that must survive the purge of what
             # it describes, and an event carrying the forgotten value would be the thing
@@ -518,7 +511,12 @@ class SqlEntryStore:
         def read(connection: sqlite3.Connection) -> Entry | None:
             found = _read_many_in(
                 connection,
-                where="e.account_id = ? AND e.key = ? AND e.entry_type = 'field'",
+                # _LIVE is not optional here and its absence was a real defect. Without it
+                # a forgotten field came back from its own key for the whole grace period,
+                # so "forget my blood type" left get_field returning it for thirty days --
+                # and, because the unique index is partial, several forgotten rows can
+                # share a key, making which one came back arbitrary as well.
+                where=f"e.account_id = ? AND e.key = ? AND e.entry_type = 'field' AND {_LIVE}",
                 parameters=(account_id, key),
                 granted=granted,
             )
@@ -1039,6 +1037,28 @@ def _sort_key(entry: Entry, ordering: Ordering) -> str | float:
     return to_column(entry.updated_at)
 
 
+def _read_written(connection: sqlite3.Connection, entry_id: str) -> Entry | None:
+    """Read back an entry the caller has just written, without the visibility filter.
+
+    Every write path has already established that this caller may act on this entry --
+    ``put_field`` checked the key, and ``revise``, ``confirm`` and ``forget`` each read it
+    through :data:`_VISIBLE` before touching it. Applying the filter a second time on the
+    way out is not a second check; it is a different question, asked after the answer has
+    changed.
+
+    Two of them changed it. A write that narrows an entry's scopes past what the writer
+    holds makes the row invisible *to the writer*, so the read-back returned nothing and
+    the store raised "no such entry" for a write that had just succeeded. Forgetting did
+    the same thing for a different reason -- the row it returns is by definition no longer
+    live.
+
+    You may always read what you just wrote. That is the rule, and it is simpler than the
+    two special cases it replaces.
+    """
+    found = _read_many_in_unscoped(connection, where="e.entry_id = ?", parameters=(entry_id,))
+    return found[0] if found else None
+
+
 def _read_one_in(
     connection: sqlite3.Connection,
     entry_id: str,
@@ -1083,6 +1103,24 @@ def _read_many_in(  # noqa: PLR0913
         bound.append(limit)
 
     rows = connection.execute(sql, bound).fetchall()
+    scopes = _scopes_for(connection, [row["entry_id"] for row in rows])
+    return [_entry_of(row, scopes=scopes.get(row["entry_id"], ())) for row in rows]
+
+
+def _read_many_in_unscoped(
+    connection: sqlite3.Connection, *, where: str, parameters: tuple[object, ...]
+) -> list[Entry]:
+    """The same read as :func:`_read_many_in`, with no visibility predicate.
+
+    Reached only from :func:`_read_written`. Kept as its own function rather than a flag on
+    the other, so that every call site which *does* filter says so by calling the one that
+    filters -- a boolean argument spelled ``scoped=False`` at a call site is exactly how a
+    scope check goes missing.
+    """
+    rows = connection.execute(
+        f"SELECT {ENTRY_COLUMNS} FROM entries e WHERE {where}",  # noqa: S608
+        parameters,
+    ).fetchall()
     scopes = _scopes_for(connection, [row["entry_id"] for row in rows])
     return [_entry_of(row, scopes=scopes.get(row["entry_id"], ())) for row in rows]
 

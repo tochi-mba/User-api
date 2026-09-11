@@ -398,7 +398,6 @@ class UserService:
             now=now,
             asserted_by=identity.audience,
             pin_cap=self._config.max_pinned,
-            scope_cap_granted=identity.granted_scope,
             journal=await self._journal(identity.account_id),
             value=value,
             body=body,
