@@ -1,4 +1,4 @@
-# ADR-0008: keyword search, not embeddings
+# ADR-0008: Keyword search, not embeddings
 
 **Status:** accepted.
 
@@ -29,12 +29,11 @@ vector store to operate.
 
 Three things had to be true, and all three were checked rather than assumed. On the stack
 in this repository -- CPython 3.11.15 with SQLite 3.45.1 behind the stdlib `sqlite3`
-module
--- FTS5 is compiled in, so `CREATE VIRTUAL TABLE ... USING fts5` needs no build flag and no
-package. Porter stemming works: a search for "preferring" returns a row whose text says
-"prefer", which is the thing that makes recall work on prose somebody typed months ago.
-And `bm25()` ranks, returning a score that is more negative the better the match, which is
-why `_search_ranked` in `entries/sql_store.py` orders by `rank ASC`.
+module -- FTS5 is compiled in, so `CREATE VIRTUAL TABLE ... USING fts5` needs no build
+flag and no package. Porter stemming works: a search for "preferring" returns a row whose
+text says "prefer", which is the thing that makes recall work on prose somebody typed
+months ago. And `bm25()` ranks, returning a score that is more negative the better the
+match, which is why `_search_ranked` in `entries/sql_store.py` orders by `rank ASC`.
 
 The fourth thing was not true, and it is why `domain/search.py` exists at all. FTS5's
 `MATCH` takes a **query language**, not a string: it has `AND`, `OR`, `NOT`, `NEAR`,
@@ -99,9 +98,9 @@ on top of this one.
 `entry_search` row beside it, both plaintext, which is the thing ADR-0002 refuses
 credentials over and ADR-0003 is honest about. An embedding index would have been a third.
 
-**The index is shared across accounts.** `MATCH` alone finds other people's rows, so account
-isolation lives in the outer `WHERE` of `_search_ranked` rather than in the index, and
-there is a test named after exactly that.
+**The index is shared across accounts.** `MATCH` alone finds other people's rows, so
+account isolation lives in the outer `WHERE` of `_search_ranked` rather than in the index,
+and there is a test named after exactly that.
 
 ## What would change our minds
 

@@ -1,4 +1,4 @@
-# ADR-0002: no credentials in a record; keyring is next door
+# ADR-0002: No credentials in a record; keyring is next door
 
 **Status:** accepted
 

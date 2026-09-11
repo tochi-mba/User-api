@@ -1,4 +1,4 @@
-# ADR-0007: settings behind a port on day one
+# ADR-0007: Settings behind a port on day one
 
 **Status:** accepted.
 

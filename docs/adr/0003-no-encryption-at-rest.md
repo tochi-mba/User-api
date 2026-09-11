@@ -1,4 +1,4 @@
-# ADR-0003: no encryption at rest
+# ADR-0003: No encryption at rest
 
 **Status:** accepted
 

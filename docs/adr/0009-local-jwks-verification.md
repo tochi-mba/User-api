@@ -1,4 +1,4 @@
-# ADR-0009: tokens verified locally against keyring's JWKS
+# ADR-0009: Tokens verified locally against keyring's JWKS
 
 **Status:** accepted.
 
@@ -66,14 +66,14 @@ Only the fetches an unknown id provokes are counted; a fetch because there is no
 yet, or because the one we held went stale, is already bounded by the cache and counting
 it would delay a genuine key rotation by a whole window.
 
-**A fetch that fails is a 503; a fetch that succeeds without the `kid` is a 401.** They are
-different facts. The first says nothing whatever about the token -- we could not check it,
-and the caller should come back rather than start over, which is what the `Retry-After: 5`
-on the 503 means. The second is a fact about the token: no key by that name is keyring's.
-Conflating them tells a person to log in again over an outage that is not theirs, and
-logging in again would not have helped. `KeyringUnreachableError` is therefore the one
-exception `TokenVerifier` deliberately does not catch, and it passes through to its own
-handler in `api/errors.py`.
+**A fetch that fails is a 503; a fetch that succeeds without the `kid` is a 401.** They
+are different facts. The first says nothing whatever about the token -- we could not check
+it, and the caller should come back rather than start over, which is what the
+`Retry-After: 5` on the 503 means. The second is a fact about the token: no key by that
+name is keyring's. Conflating them tells a person to log in again over an outage that is
+not theirs, and logging in again would not have helped. `KeyringUnreachableError` is
+therefore the one exception `TokenVerifier` deliberately does not catch, and it passes
+through to its own handler in `api/errors.py`.
 
 The same split governs what counts as unreachable. A proxy's HTML error page served with a
 200, a document with no `keys` array, a key set holding nothing usable: all of those are
@@ -135,21 +135,22 @@ because there isn't one.
 
 ## What it costs
 
-**Up to fifteen minutes of access after a logout.** Bounded by keyring's TTL and by nothing
-this service does. There is no revocation path here to add, short of the blocklist the
-design exists to avoid.
+**Up to fifteen minutes of access after a logout.** Bounded by keyring's TTL and by
+nothing this service does. There is no revocation path here to add, short of the blocklist
+the design exists to avoid.
 
-**A deleted keyring account keeps its record here.** No display name, no email, no existence
-check: this service cannot ask, so a deletion upstream is invisible until a person calls
-`DELETE /v1/user` or an operator removes the row. The record is not reachable without a
-token, because everything is scoped by the `sub` in one, but it is still on disk.
+**A deleted keyring account keeps its record here.** No display name, no email, no
+existence check: this service cannot ask, so a deletion upstream is invisible until a
+person calls `DELETE /v1/user` or an operator removes the row. The record is not reachable
+without a token, because everything is scoped by the `sub` in one, but it is still on
+disk.
 
-**A key rotation can cost a genuine caller a 401.** The held document is fresh for an hour;
-when keyring rotates, the first token signed with the new `kid` provokes a refetch, and
-any other unknown `kid` within the same 60-second window is refused rather than provoking
-one of its own. A real token can land in that gap and be told the same thing a forgery is
-told. That is the rate limit working as designed, and it is indistinguishable from the
-outside, by design.
+**A key rotation can cost a genuine caller a 401.** The held document is fresh for an
+hour; when keyring rotates, the first token signed with the new `kid` provokes a refetch,
+and any other unknown `kid` within the same 60-second window is refused rather than
+provoking one of its own. A real token can land in that gap and be told the same thing a
+forgery is told. That is the rate limit working as designed, and it is indistinguishable
+from the outside, by design.
 
 **The unverified audience is read before anything is verified.** PyJWT will not check an
 audience it has not been told, and the only place to learn which one a token claims is the

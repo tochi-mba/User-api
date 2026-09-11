@@ -66,9 +66,9 @@ the trade: some small number of the most recent things somebody told the assista
 exchange for not fsyncing on every write in a service designed to be written to
 constantly.
 
-**`PRAGMA secure_delete = ON`, which keyring does not set.** It overwrites freed pages rather
-than merely marking them free, which covers the freelist case: a page released rather than
-rewritten keeps its contents until something reuses it.
+**`PRAGMA secure_delete = ON`, which keyring does not set.** It overwrites freed pages
+rather than merely marking them free, which covers the freelist case: a page released
+rather than rewritten keeps its contents until something reuses it.
 
 The honest note goes with it. Across every case constructed for it, it made **no
 measurable difference** -- ADR-0005 has the table, and the truncating checkpoint was doing
@@ -95,8 +95,8 @@ regardless of who is waiting, so a client that disconnected mid-write is not a w
 did not happen. That belongs in the open, and it is the price of serialising on one thread
 rather than on a lock cancellation can drop.
 
-**No concurrent writers, and one process.** WAL gives readers concurrency with a writer and
-the single connection declines to use it, which is what makes a check-and-write pair
+**No concurrent writers, and one process.** WAL gives readers concurrency with a writer
+and the single connection declines to use it, which is what makes a check-and-write pair
 indivisible. Every cap in this service -- entries, fields, pins, events -- is counted and
 enforced inside one of those transactions, so "count, then write" cannot go stale. The
 purge sweeper is a task in the same process and stops if it dies.

@@ -1,4 +1,4 @@
-# ADR-0001: a record is data, never instructions
+# ADR-0001: A record is data, never instructions
 
 **Status:** accepted
 
