@@ -28,7 +28,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Self
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from keyring_client import check_service_token
+from pydantic import AfterValidator, BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
@@ -40,6 +41,20 @@ ENV_NESTED_DELIMITER = "__"
 PositiveInt = Annotated[int, Field(gt=0)]
 PositiveFloat = Annotated[float, Field(gt=0)]
 NonNegativeInt = Annotated[int, Field(ge=0)]
+
+
+def _validated_service_token(value: SecretStr | None) -> SecretStr | None:
+    """Refuse a token settings-api would never accept, without echoing it.
+
+    Runs after wrapping as ``SecretStr``, so a validation error's input is the secret
+    (asterisks), not the presented string.
+    """
+    if value is not None:
+        check_service_token(value.get_secret_value())
+    return value
+
+
+ServiceToken = Annotated[SecretStr | None, AfterValidator(_validated_service_token)]
 
 
 class LogFormat(StrEnum):
@@ -56,6 +71,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="forbid",
+        hide_input_in_errors=True,
     )
 
     # -- Identity ----------------------------------------------------------------------
@@ -144,6 +160,41 @@ class Settings(BaseSettings):
     search_default_limit: PositiveInt = 20
     search_max_limit: PositiveInt = 100
 
+    # -- Per-person settings -----------------------------------------------------------
+    settings_api_base_url: str | None = None
+    """Where settings-api is. Unset, every person gets this configuration as it stands.
+
+    Set, each request that needs a pin ceiling or a default search page reads that
+    caller's ``user`` settings. The ceilings in this configuration still apply on top of
+    what anybody chooses -- a person may narrow a cap and never raise it.
+
+    ``erasure_mode``, ``grace_days`` and ``log_values`` stay on
+    :class:`~user_api.users.sql_settings.SqlSettingsStore`. The erasure sweeper has no
+    user token to present to settings-api, and ``log_values`` is written by the public
+    PUT and read by the event log on the same row; dual-writing it without a token for
+    the sweeper would be half-wiring.
+    """
+
+    settings_api_token: ServiceToken = None
+    """This service's entry in settings-api's ``SETTINGS_API_SERVICES``.
+
+    At least 32 characters, the rule settings-api enforces on its side. Its grant there
+    needs ``audience_prefix`` equal to ``USER_API_AUDIENCE_PREFIX`` (``user`` unless the
+    operator changed it): settings-api is shown the same user token keyring minted.
+    """
+
+    @property
+    def settings_api(self) -> tuple[str, SecretStr] | None:
+        """Where settings-api is and how to authenticate to it, or ``None`` when unused.
+
+        One value rather than two optional ones, so that nothing downstream has to
+        re-establish that the pair is whole: :meth:`_check_settings_api_is_whole` already
+        refused to construct settings where it is not.
+        """
+        if self.settings_api_base_url is None or self.settings_api_token is None:
+            return None
+        return self.settings_api_base_url, self.settings_api_token
+
     @field_validator("database_path")
     @classmethod
     def _resolve_path(cls, value: Path) -> Path:
@@ -178,6 +229,25 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         if self.max_fields_per_account > self.max_entries_per_account:
             msg = "max_fields_per_account must not exceed max_entries_per_account"
+            raise ValueError(msg)
+        return self
+
+    @field_validator("settings_api_base_url")
+    @classmethod
+    def _blank_is_unset(cls, value: str | None) -> str | None:
+        """``USER_API_SETTINGS_API_BASE_URL=`` in a ``.env`` means off, not an empty URL."""
+        return value or None
+
+    @model_validator(mode="after")
+    def _check_settings_api_is_whole(self) -> Self:
+        """Refuse half a settings-api configuration, and a token that could never work.
+
+        A URL with no token would be refused on every call, and a token with no URL is a
+        secret configured for nothing. Either is somebody's mistake, and startup is the
+        cheapest place to hear about it.
+        """
+        if (self.settings_api_base_url is None) != (self.settings_api_token is None):
+            msg = "settings_api_base_url and settings_api_token must be set together"
             raise ValueError(msg)
         return self
 

@@ -48,6 +48,7 @@ from user_api.domain.errors import (
     InvalidValueError,
     KeyringUnreachableError,
     LimitExceededError,
+    PreferencesUnavailableError,
     ScopeConflictError,
     ScopeNotGrantedError,
 )
@@ -97,6 +98,10 @@ _DOMAIN_STATUS: dict[type[Exception], int] = {
     InvalidCursorError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     CredentialRefusedError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     LimitExceededError: status.HTTP_409_CONFLICT,
+    # Not a 4xx. The caller did nothing wrong: this service is misconfigured, or a
+    # setting that must not be guessed at could not be read. Serving deployment
+    # defaults would hide a missing grant behind behaviour that happened to work.
+    PreferencesUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 
 

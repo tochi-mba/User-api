@@ -38,6 +38,30 @@ or HS256 token, and none by which a caller-supplied scope can widen what its tok
 Each would be a one-variable route past the property the service is built around, so they
 are not configuration; they are the service.
 
+### settings-api
+
+Off by default. Both `USER_API_SETTINGS_API_BASE_URL` and `USER_API_SETTINGS_API_TOKEN`
+must be set together, or neither; half a pair is a startup error. The token is checked
+with the same 32-character rule settings-api enforces, and is never echoed on failure.
+
+When on, each authenticated request that needs a pin ceiling or a default search page asks
+settings-api for that caller's `user` namespace, presenting the same user token keyring
+minted. The grant there needs `audience_prefix` equal to `USER_API_AUDIENCE_PREFIX`
+(`user` unless you changed it). A person may **lower** `max_pinned` and
+`search_default_limit`; they cannot raise them above this deployment, and
+`USER_API_SEARCH_MAX_LIMIT` remains the hard cap on a named page size.
+
+If settings-api has never answered, those two fall back to the configuration. If it
+refuses this service (401/403), the request is **503** with a fixed body that names
+neither the grant nor the URL.
+
+`erasure_mode`, `grace_days` and `log_values` stay on this service's `SqlSettingsStore`.
+The erasure sweeper has no user token to present to settings-api, and `log_values` is
+written by `PUT /v1/user/settings` and read by the event log on the same row. Dual-writing
+it without a token for the sweeper would be half-wiring.
+
+Do not fetch settings at startup. An empty URL keeps today's behaviour exactly.
+
 ## First start
 
 ```bash
@@ -57,8 +81,10 @@ own transactions, and the erasure sweeper starts.
 network call, and the first fetch happens when the first token arrives. A service that
 refused to start unless keyring were reachable would turn one outage into two at the worst
 possible moment, because these two are restarted together. A user-api that starts cleanly
-while keyring is down is working as designed: it will serve `/healthy` as **degraded** and
-answer every authenticated request with a 503 until keyring comes back.
+while keyring is down is working as designed: it will serve `/ready` as **degraded** and
+answer every authenticated request with a 503 until keyring comes back. The same rule
+applies to settings-api: the client is constructed, not contacted, and an empty URL
+keeps today's behaviour exactly.
 
 The service binds `127.0.0.1` by default and should stay there. It belongs behind a
 TLS-terminating reverse proxy: every token it accepts is a bearer token, and over plain HTTP
@@ -224,14 +250,15 @@ Every authenticated request fails with **503** and `Retry-After: 5`, not 401. Th
 distinction is deliberate: a 401 would tell a person to log in again because *this* service
 could not fetch a public key, and logging in again would not have helped.
 
-What still works: `GET /healthy` answers, and reports `keyring` as degraded. The database is
+What still works: `GET /healthy` answers 200 and `GET /ready` reports `keyring` as
+degraded. The database is
 fine and nothing is lost.
 
 What to expect around the edges:
 
 - **A cached key set lasts an hour** (`USER_API_JWKS_CACHE_SECONDS`). A keyring outage may
   therefore be invisible here for up to an hour for tokens signed by a `kid` already held,
-  and `/healthy` will keep reporting `ok` while the cache is fresh.
+  and `/ready` will keep reporting `ok` while the cache is fresh.
 - **A key rotation during an outage costs the first caller a 401.** An unknown `kid`
   provokes at most one fetch per `USER_API_JWKS_MIN_REFETCH_SECONDS` (60 by default); a real
   token arriving inside that window is refused with the same message a forgery gets. That is
@@ -244,7 +271,7 @@ What to expect around the edges:
 
 ## Watching it
 
-`GET /healthy` needs no authentication, so everything on it is written on the assumption
+`GET /ready` needs no authentication, so everything on it is written on the assumption
 that a stranger is reading it: the service version, the environment, uptime, a
 **process-wide** entry count, and whether keyring's keys are fetchable. There is
 deliberately no per-account number anywhere on it -- a count that moves when one person does
@@ -279,7 +306,9 @@ its name to `_CONTENT_FIELDS` in `core/logging.py` rather than remembering not t
 
 Lines worth alerting on: `sweep_failed` (erasure has stopped), `jwks_fetch_failed` and
 `jwks_document_malformed` (keyring, or something in front of it, is not serving a key set),
-and `jwks_refetch_suppressed` in volume (somebody is aiming invented key ids at you).
+`jwks_refetch_suppressed` in volume (somebody is aiming invented key ids at you), and
+`settings_rejected` (this service's grant in settings-api is wrong -- a 503 on every
+authenticated request that needs a cap, not an outage).
 
 ## What is deliberately not here
 

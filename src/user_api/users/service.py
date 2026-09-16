@@ -63,6 +63,7 @@ if TYPE_CHECKING:
     from user_api.auth.tokens import Identity
     from user_api.core.clock import Clock
     from user_api.core.config import Settings
+    from user_api.core.preferences import Preferences, PreferenceSource
     from user_api.domain.settings import ErasureMode, UserSettings
     from user_api.entries.store import EntryStore
     from user_api.events.log import Event, EventLog
@@ -109,9 +110,9 @@ class SchemaKey:
 class UserService:
     """The one place a request becomes a change."""
 
-    # Five stores, the erasure path, the transaction boundary, the clock and the
-    # configuration. This is the composition root's output, not a call site's argument
-    # list -- it is constructed once.
+    # Five stores, the erasure path, the transaction boundary, the clock, the
+    # configuration, and the per-person caps. This is the composition root's output, not
+    # a call site's argument list -- it is constructed once.
     def __init__(  # noqa: PLR0913
         self,
         *,
@@ -123,6 +124,7 @@ class UserService:
         database: Database,
         clock: Clock,
         config: Settings,
+        preferences: PreferenceSource,
     ) -> None:
         self._users = users
         self._entries = entries
@@ -132,6 +134,7 @@ class UserService:
         self._db = database
         self._clock = clock
         self._config = config
+        self._preferences = preferences
 
     # -- reads -------------------------------------------------------------------------
 
@@ -139,6 +142,7 @@ class UserService:
         """The always-load block. Never a 404: an account that has written nothing has an
         empty record, which is the truth rather than an error.
         """
+        caps = await self._caps(identity)
         return UserView(
             account_id=identity.account_id,
             record=await self._users.get(identity.account_id),
@@ -148,7 +152,7 @@ class UserService:
             pinned=await self._entries.pinned(
                 identity.account_id,
                 granted=identity.granted_scope,
-                limit=self._config.max_pinned,
+                limit=caps.max_pinned,
             ),
         )
 
@@ -225,12 +229,13 @@ class UserService:
             check_filterable(filters.scope, granted=identity.granted_scope)
 
         effective = Ordering.RELEVANCE if filters.query is not None else ordering
+        caps = await self._caps(identity)
         return await self._entries.search(
             identity.account_id,
             granted=identity.granted_scope,
             filters=filters,
             ordering=effective,
-            limit=self._limit(limit),
+            limit=self._limit(limit, default=caps.search_default_limit),
             cursor=_cursor(cursor, expected=effective),
         )
 
@@ -245,12 +250,13 @@ class UserService:
         has no such guarantee, and "export everything you know about me" is the one read in
         this service that has to be exactly right.
         """
+        caps = await self._caps(identity)
         return await self._entries.search(
             identity.account_id,
             granted=identity.granted_scope,
             filters=Filters(),
             ordering=Ordering.OLDEST,
-            limit=self._limit(limit),
+            limit=self._limit(limit, default=caps.search_default_limit),
             cursor=_cursor(cursor, expected=Ordering.OLDEST),
         )
 
@@ -258,8 +264,11 @@ class UserService:
         self, identity: Identity, *, limit: int | None = None, before: int | None = None
     ) -> list[Event]:
         """The change log, newest first."""
+        caps = await self._caps(identity)
         return await self._events.read(
-            identity.account_id, limit=self._limit(limit), before_sequence=before
+            identity.account_id,
+            limit=self._limit(limit, default=caps.search_default_limit),
+            before_sequence=before,
         )
 
     # -- writes ------------------------------------------------------------------------
@@ -295,6 +304,7 @@ class UserService:
         # cannot forget a call that does not exist.
         await self._users.ensure(identity.account_id, now=now)
         journal = await self._journal(identity.account_id)
+        caps = await self._caps(identity)
         entry = await self._entries.put_field(
             account_id=identity.account_id,
             key=normalized,
@@ -310,7 +320,7 @@ class UserService:
             now=now,
             entry_cap=self._config.max_entries_per_account,
             field_cap=self._config.max_fields_per_account,
-            pin_cap=self._config.max_pinned,
+            pin_cap=caps.max_pinned,
             journal=journal,
         )
         await self._users.touch(identity.account_id, now=now)
@@ -340,6 +350,7 @@ class UserService:
         now = self._clock.now()
         await self._users.ensure(identity.account_id, now=now)
         journal = await self._journal(identity.account_id)
+        caps = await self._caps(identity)
         entry = await self._entries.write_note(
             account_id=identity.account_id,
             body=text,
@@ -353,7 +364,7 @@ class UserService:
             pinned=pinned,
             now=now,
             entry_cap=self._config.max_entries_per_account,
-            pin_cap=self._config.max_pinned,
+            pin_cap=caps.max_pinned,
             journal=journal,
         )
         await self._users.touch(identity.account_id, now=now)
@@ -392,13 +403,14 @@ class UserService:
             self._check_scopes(scopes, identity)
 
         now = self._clock.now()
+        caps = await self._caps(identity)
         entry = await self._entries.revise(
             account_id=identity.account_id,
             entry_id=entry_id,
             granted=identity.granted_scope,
             now=now,
             asserted_by=identity.audience,
-            pin_cap=self._config.max_pinned,
+            pin_cap=caps.max_pinned,
             journal=await self._journal(identity.account_id),
             value=value,
             body=body,
@@ -527,12 +539,21 @@ class UserService:
         check_known(scopes, allowed=self._config.allowed_scopes)
         check_writable(scopes, granted=identity.granted_scope)
 
-    def _limit(self, requested: int | None) -> int:
+    async def _caps(self, identity: Identity) -> Preferences:
+        """This caller's pin ceiling and default page, resolved for this request.
+
+        Read per request rather than cached on the service: a person who just lowered
+        ``max_pinned`` is entitled to have the next write held to it, not to whatever
+        this process happened to see last time.
+        """
+        return await self._preferences.for_token(identity.token)
+
+    def _limit(self, requested: int | None, *, default: int) -> int:
         """Clamp a requested page size. Clamped rather than refused: a caller asking for a
         thousand wants as many as it can have, and a 422 teaches it nothing it can act on.
         """
         if requested is None:
-            return self._config.search_default_limit
+            return default
         return max(1, min(requested, self._config.search_max_limit))
 
 

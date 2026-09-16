@@ -61,7 +61,7 @@ class TestSchemaSnapshot:
     ) -> None:
         # The database fixture is already migrated, which is the whole comparison: run the
         # migrations, render the result, and it must equal the file in the repository.
-        assert await _render(database) == SNAPSHOT.read_text(), (
+        assert await _render(database) == SNAPSHOT.read_text(encoding="utf-8"), (
             "the schema drifted from its snapshot; run `make schema` and review the diff"
         )
 
@@ -95,4 +95,4 @@ class TestSnapshotIsRegenerable:
         # from whatever state a developer's file happens to be in.
         from scripts.dump_schema import dump
 
-        assert await dump() == SNAPSHOT.read_text()
+        assert await dump() == SNAPSHOT.read_text(encoding="utf-8")

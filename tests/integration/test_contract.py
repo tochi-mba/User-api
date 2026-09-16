@@ -19,9 +19,13 @@ import pytest
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
+UNAUTHENTICATED = frozenset({"/healthy", "/ready"})
+"""The probes. A load balancer holds no token, so these two are open and document no 401."""
+
 OPERATIONS = frozenset(
     {
         "get_health",
+        "check_readiness",
         "get_user",
         "delete_user",
         "describe_schema",
@@ -103,6 +107,9 @@ class TestTheOperationSet:
             "forget",
             "confirm",
             "update",
+            # The probes: `check_readiness` is what every service in the family calls it,
+            # and a probe genuinely checks rather than gets.
+            "check",
         }
 
         for _, _, operation in operations(spec):
@@ -173,7 +180,7 @@ class TestNoResponseCanCarryACredential:
 class TestErrors:
     def test_every_authenticated_operation_documents_a_401(self, spec: dict[str, Any]) -> None:
         for _, path, operation in operations(spec):
-            if path == "/healthy":
+            if path in UNAUTHENTICATED:
                 continue
             assert "401" in operation["responses"], operation["operationId"]
 
@@ -183,7 +190,7 @@ class TestErrors:
         # A caller that has not been told 503 is possible will treat it as a bug rather
         # than as "come back in a moment".
         for _, path, operation in operations(spec):
-            if path == "/healthy":
+            if path in UNAUTHENTICATED:
                 continue
             assert "503" in operation["responses"], operation["operationId"]
 
@@ -192,7 +199,7 @@ class TestErrors:
         referenced = [
             operation["responses"]["401"]
             for _, path, operation in operations(spec)
-            if path != "/healthy"
+            if path not in UNAUTHENTICATED
         ]
         assert referenced
         assert all("Problem" in str(response) for response in referenced)

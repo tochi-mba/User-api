@@ -13,12 +13,12 @@
 from __future__ import annotations
 
 import sqlite3
-import stat
 from contextlib import closing
 from typing import TYPE_CHECKING
 
 import pytest
 
+from tests.support.filemode import assert_mode
 from user_api.domain.errors import EntryNotFoundError
 from user_api.storage.database import (
     DATABASE_FILE_MODE,
@@ -251,7 +251,7 @@ class TestFileMode:
     """
 
     async def test_the_database_is_readable_only_by_its_owner(self, db: Database) -> None:
-        assert stat.S_IMODE(db.path.stat().st_mode) == DATABASE_FILE_MODE
+        assert_mode(db.path, DATABASE_FILE_MODE)
 
     @pytest.mark.parametrize("suffix", SIDECARS)
     async def test_each_sidecar_is_too(self, db: Database, suffix: str) -> None:
@@ -262,7 +262,7 @@ class TestFileMode:
         companion = sidecar(db, suffix)
 
         assert companion.exists()
-        assert stat.S_IMODE(companion.stat().st_mode) == DATABASE_FILE_MODE
+        assert_mode(companion, DATABASE_FILE_MODE)
 
     async def test_reopening_an_existing_database_tightens_it_again(self, tmp_path: Path) -> None:
         # A file restored from a backup, or copied between hosts, arrives with whatever
@@ -274,7 +274,7 @@ class TestFileMode:
 
         second = Database(path)
         try:
-            assert stat.S_IMODE(path.stat().st_mode) == DATABASE_FILE_MODE
+            assert_mode(path, DATABASE_FILE_MODE)
         finally:
             await second.aclose()
 
@@ -282,7 +282,7 @@ class TestFileMode:
         # A world-readable directory says which files exist even when none can be read.
         database = Database(tmp_path / "fresh" / "user.db")
         try:
-            assert stat.S_IMODE((tmp_path / "fresh").stat().st_mode) == 0o700
+            assert_mode(tmp_path / "fresh", 0o700)
         finally:
             await database.aclose()
 
@@ -294,7 +294,7 @@ class TestFileMode:
 
         database = Database(existing / "user.db")
         try:
-            assert stat.S_IMODE(existing.stat().st_mode) == 0o755
+            assert_mode(existing, 0o755)
         finally:
             await database.aclose()
 
@@ -308,7 +308,7 @@ class TestFileMode:
 
         make_private(lonely)
 
-        assert stat.S_IMODE(lonely.stat().st_mode) == DATABASE_FILE_MODE
+        assert_mode(lonely, DATABASE_FILE_MODE)
         assert not any_sidecar_exists(lonely)
 
 

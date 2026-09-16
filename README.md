@@ -59,13 +59,18 @@ cp .env.example .env                      # every setting has a working default
 make run                                  # http://127.0.0.1:8002/docs
 ```
 
-Every route except `GET /healthy` needs a bearer token from keyring's
+Every route except `GET /healthy` and `GET /ready` needs a bearer token from keyring's
 `POST /v1/auth/service-token`, minted with audience `user` (unscoped entries only) or
 `user.<scope>` (those, plus entries tagged with that scope). A `USER_API_`-prefixed
 environment variable that matches no setting is a **startup error**, not a warning.
 
-`make check` is the gate: format, lint, strict types, the four layering contracts, and the
+`make check` is the gate: format, lint, strict types, the five layering contracts, and the
 suite at 100% branch coverage.
+
+Optional: point `USER_API_SETTINGS_API_BASE_URL` and `USER_API_SETTINGS_API_TOKEN` at a
+settings-api so each person can lower `max_pinned` and `search_default_limit` (never
+raise them). Unset, everybody gets the deployment values. Erasure, grace and whether the
+event log keeps old values stay in this service -- the sweeper has no user token.
 
 ## The five properties it is built around
 

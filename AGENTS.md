@@ -48,7 +48,7 @@ in a shell chain masks the exit code, which is how a broken commit slips through
 
 ```
 src/user_api/
-  core/      config, clock, logging, request context, version, and the composition root
+  core/      config, clock, logging, request context, version, preferences, and the composition root
   domain/    pure types and rules: Entry, ErasureMode, cursors, field keys, scopes,
              search-query building, value limits, the credential detector. Imports
              nothing internal.
@@ -87,16 +87,27 @@ deliberately and say why in the commit message -- do not work around it.
    "Domain is independent" in `pyproject.toml`, run by `make imports`.
 2. **Layers point inward.** The contract "Layers point inward", listing the seven packages
    in order. `exhaustive = false`, so `core` is outside it by design.
-3. **`jwt` and `httpx` are imported only by `user_api.auth`.** The contract "Keyring is
-   spoken to from one package only", which forbids both to every other package,
-   indirect imports included. Everything this service asks of keyring, and every rule by
-   which it believes an answer, lives in one package you can read in a sitting. It is also
-   why `JwksClient.key_for` is annotated `-> Any` rather than `-> jwt.PyJWK`: a signature
-   naming a library's type is how that library leaks out of the package meant to hold it.
-4. **SQL stays behind the stores.** The contract "SQL stays behind the stores" forbids
+3. **Keyring is spoken to from `user_api.auth` alone, through `keyring_client`.** The
+   contract "Keyring is spoken to from one package only" forbids `jwt`, `httpx` and
+   `keyring_client` to every other package. The token rules themselves -- RS256, the pinned
+   issuer, the required claims, expiry on the injected clock, the JWKS rate limits -- are the
+   family's shared library, tested against keyring's real signer in the keyring repository.
+   `auth/` adds only this service's scope rule and translates the library's errors into this
+   service's domain errors, so everything above it can be read without knowing a library was
+   involved. `core.config` is left off that list so it can validate
+   `USER_API_SETTINGS_API_TOKEN` with `keyring_client.check_service_token` rather than a
+   copy of the 32-character rule.
+4. **Talking to settings-api stays behind the preferences module.** Nothing but
+   `core.preferences` may import `settings_client`. The container constructs the source
+   through that module. Reading the client from a call site would re-implement caching,
+   revalidation, single-flight and outage behaviour, slightly wrong, and would present a
+   user token without the one module that knows how to degrade. `erasure_mode`,
+   `grace_days` and `log_values` stay on `SqlSettingsStore` because the sweeper has no
+   user token to present, and dual-writing `log_values` without one would be half-wiring.
+5. **SQL stays behind the stores.** The contract "SQL stays behind the stores" forbids
    `api`, `auth` and `domain` from importing `user_api.storage` or `sqlite3`. A router that
    *could* write a query is a router that will eventually contain one.
-5. **Nothing reads the wall clock.** Every component that behaves differently over time
+6. **Nothing reads the wall clock.** Every component that behaves differently over time
    takes a `Clock` in its constructor, and `SystemClock` in `core/clock.py` is the only
    caller of `datetime.now` or `time.monotonic` in `src/`. This includes JWT expiry: PyJWT's
    `verify_exp` **and** `verify_iat` are switched off and expiry is re-checked against the
@@ -107,14 +118,14 @@ deliberately and say why in the commit message -- do not work around it.
    never sleeps cannot test a grace period any other way. The one deliberate exception is
    `time.perf_counter()` in `api/middleware.py`, which measures a request's duration for a
    log field and decides nothing.
-6. **No account id appears in any path, and no endpoint accepts one.** Every route is under
+7. **No account id appears in any path, and no endpoint accepts one.** Every route is under
    `/v1/user`, and the account comes from the verified `sub` via `IdentityDep`. Every store
    method takes an `account_id` and it is not optional on any of them, so a cross-account
    read is not forbidden -- it is inexpressible. The corollary: another account's entry is
    **404, never 403**, identical to one that never existed. `EntryNotFoundError` covers
    never-existed, another account's, forgotten and out-of-scope alike; adding a
    distinguishable error here is a security change.
-7. **Scope comes from the token's `aud`, and a query parameter can only narrow.**
+8. **Scope comes from the token's `aud`, and a query parameter can only narrow.**
    `granted_scope()` in `domain/scopes.py` is the only thing that turns an audience into a
    grant, and it is called from the verified claims in `auth/tokens.py` and nowhere else.
    `check_filterable` refuses a `?scope=` that is not the one the token holds -- refused
@@ -122,7 +133,7 @@ deliberately and say why in the commit message -- do not work around it.
    and stops asking. `check_writable` refuses writing *up*. Enforcement below the service is
    `_VISIBLE` in `entries/sql_store.py`, one predicate binding one parameter, applied to
    writes addressed by id as well as to reads.
-8. **No entry content ever reaches a log record.** Two mechanisms, and both are needed: no
+9. **No entry content ever reaches a log record.** Two mechanisms, and both are needed: no
    call site passes content to a logger (log `entry_id`, `key`, `entry_type`, counts), and
    `redact_secrets` in `core/logging.py` replaces anything whose field name is on
    `_CONTENT_FIELDS` or matches a sensitive substring, at every depth, before rendering.
@@ -132,14 +143,14 @@ deliberately and say why in the commit message -- do not work around it.
    `RequestValidationError` is reshaped by hand in `api/errors.py` because FastAPI's own
    handler echoes the offending **input**, and an unhandled exception is rendered by type
    name only.
-9. **A credential is refused rather than stored.** `looks_like_a_credential` runs on
+10. **A credential is refused rather than stored.** `looks_like_a_credential` runs on
    `set_field`, `write_note` and both halves of `revise_entry`, after shape validation and
    **before** the scope check, so a caller pasting an API key is told what is actually
    wrong. The refusal names keyring and never echoes the matched text. There is no override
    and there is no setting that turns it off. The specification is the pair of corpora in
    `tests/unit/domain/test_secrets.py`: `MUST_ACCEPT` is the one allowed to grow, and a
    change that shrinks it is a regression even if it catches more secrets.
-10. **Erasure means `DELETE` plus a truncating checkpoint.** `PRAGMA wal_checkpoint(FULL)`
+11. **Erasure means `DELETE` plus a truncating checkpoint.** `PRAGMA wal_checkpoint(FULL)`
     is not enough and `DELETE` alone is not close: the forgotten value sits in the `-wal`
     file, findable with `grep`. `users/erasure.py` does the deletes and the event-value
     stripping in one transaction and calls `Database.checkpoint_truncate` afterwards, once
@@ -148,26 +159,26 @@ deliberately and say why in the commit message -- do not work around it.
     it is the one test here that a unit test cannot replace, because it is about the file
     rather than about the code. `PRAGMA secure_delete` is on and is not what makes this
     work -- see [ADR-0005](docs/adr/0005-erasure-is-a-setting.md).
-11. **Route `operation_id`s are public API.** They become MCP tool names, so renaming one
+12. **Route `operation_id`s are public API.** They become MCP tool names, so renaming one
     breaks every client with a tool bound to it. There are sixteen; every route sets one
     explicitly, snake_case `verb_noun`, along with a `summary` and a real `description`
     written for a model rather than for a browser. Keep the OpenAPI contract test that pins
     the exact set in step when you add an endpoint.
-12. **Coverage is 100% branch coverage, and the exclusions are only non-executable
+13. **Coverage is 100% branch coverage, and the exclusions are only non-executable
     lines** -- `if TYPE_CHECKING:`, bare `...` protocol bodies, `@overload`,
     `raise NotImplementedError`, the `__main__` guard. There is no `# pragma: no cover` in `src/`, and `fail_under = 100`
     is what makes that stick. A line that is hard to cover is usually the code saying it is
     shaped wrong: the URL exemption in `domain/secrets.py` was removed because the gate
     showed no input could reach it, and `Database.count` indexes into its result rather than
     testing for a missing row precisely so there is no branch nothing can take.
-13. **The FTS index is maintained by hand, and the table and the index must agree.**
+14. **The FTS index is maintained by hand, and the table and the index must agree.**
     `entry_search` is a *plain* FTS5 table, not an external-content one, so every write path
     goes through `_index` or `_unindex` in `entries/sql_store.py` and nothing in the
     database enforces that. `index_agrees` exists on the `EntryStore` port for exactly this,
     and a test class asserts the two still match after create, revise, forget, purge and
     cascade. The explicit helper is what creates this bug class; the test class is the price
     of the trade.
-14. **Every cap is counted inside the transaction that writes.** Entries, fields, pins and
+15. **Every cap is counted inside the transaction that writes.** Entries, fields, pins and
     the event log: the count and the write are one submitted callable on one thread, so
     "count, then write" cannot go stale. A cap checked by the caller before the call is a
     cap two concurrent writes both pass.
@@ -321,6 +332,10 @@ than the caller's. Three exist; a fourth needs to be a thing somebody would actu
 - `make matrix` runs 3.11 and 3.12 because coverage differs between them: until 3.12,
   `isinstance()` against a runtime-checkable Protocol executed property getters, so a
   property with no test of its own looked covered on 3.11 and does not on 3.12.
+- Assert a file mode with `assert_mode` from `tests/support/filemode.py`, never with
+  `stat.S_IMODE` directly. It is exact on POSIX and compares only the owner's bits on
+  Windows, where NTFS has no permission bits and every writable file reads 0666, so a
+  direct comparison fails natively there.
 
 ## Commit conventions
 
@@ -332,7 +347,7 @@ what they lack is your reasoning.
 ## Definition of done
 
 - [ ] Tests were written first, and failed first.
-- [ ] `make check` passes: format, lint, strict types, the four contracts, 100% coverage.
+- [ ] `make check` passes: format, lint, strict types, the five contracts, 100% coverage.
 - [ ] New behaviour is covered by a test named after the behaviour.
 - [ ] Anything that reads or writes an entry has an **isolation test** proving another
       account gets a 404, and a **scope test** proving an out-of-scope token gets the same

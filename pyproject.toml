@@ -17,9 +17,11 @@ classifiers = [
 dependencies = [
     "fastapi>=0.115",
     "httpx>=0.27",
+    "keyring-client",
     "pydantic>=2.9",
     "pydantic-settings>=2.5",
     "pyjwt>=2.9",
+    "settings-client",
     "structlog>=24.4",
     "uvicorn[standard]>=0.30",
 ]
@@ -230,7 +232,9 @@ allow_indirect_imports = true
 # Everything this service asks of keyring -- and every rule by which it believes an
 # answer -- lives in one package that can be read in a sitting. Nothing else speaks JWT,
 # and nothing else makes an outbound HTTP call, so "how do we decide who this is" has
-# exactly one place to look.
+# exactly one place to look. core.config is left off on purpose: it validates
+# USER_API_SETTINGS_API_TOKEN with keyring_client.check_service_token, the same
+# 32-character rule settings-api enforces, rather than a copy that could drift.
 [[tool.importlinter.contracts]]
 name = "Keyring is spoken to from one package only"
 type = "forbidden"
@@ -242,5 +246,37 @@ source_modules = [
     "user_api.users",
     "user_api.storage",
 ]
-forbidden_modules = ["httpx", "jwt"]
+forbidden_modules = ["httpx", "jwt", "keyring_client"]
 allow_indirect_imports = true
+
+# settings-client owns caching, revalidation, single-flight and outage behaviour. Reading
+# it from a call site would re-implement those four, slightly wrong, and would present a
+# user token to settings-api without the one module that knows how to degrade. The
+# container constructs the source through build_preference_source, which is the intended
+# path, so only direct imports are refused. core.config is listed because it validates
+# the service token with keyring_client.check_service_token rather than importing this
+# client to do it.
+[[tool.importlinter.contracts]]
+name = "Talking to settings-api stays behind the preferences module"
+type = "forbidden"
+source_modules = [
+    "user_api.api",
+    "user_api.auth",
+    "user_api.users",
+    "user_api.entries",
+    "user_api.events",
+    "user_api.domain",
+    "user_api.storage",
+    "user_api.core.config",
+    "user_api.core.container",
+    "user_api.core.clock",
+    "user_api.core.context",
+    "user_api.core.logging",
+    "user_api.core.version",
+]
+forbidden_modules = ["settings_client"]
+allow_indirect_imports = true
+
+[tool.uv.sources]
+keyring-client = { git = "https://github.com/tochi-mba/Keyring-api", subdirectory = "clients/python", tag = "keyring-client-v0.1.0" }
+settings-client = { git = "https://github.com/tochi-mba/Settings-api", subdirectory = "clients/python", tag = "settings-client-v0.1.0" }

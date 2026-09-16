@@ -36,7 +36,7 @@ import-linter contracts in `pyproject.toml` rather than by convention.
                     │            (imports nothing)      │
                     └──────────────────────────────────┘
 
-  core/  config · clock · logging · request context · version · composition root
+  core/  config · clock · logging · request context · version · preferences · composition root
          (a shared kernel every layer may use, except domain)
 ```
 
@@ -51,9 +51,9 @@ layer calls, none of them knows what a row or a status code is.
 from the database. A token is checked against a cached public key and nothing else, which
 is what makes it possible to keep `jwt` and `httpx` inside one package.
 
-## The four contracts, and what each prevents
+## The five contracts, and what each prevents
 
-`make imports` runs all four. They are not documentation of the diagram above; they are the
+`make imports` runs all five. They are not documentation of the diagram above; they are the
 reason the diagram is still true.
 
 | Contract | What it forbids | What it prevents |
@@ -61,12 +61,13 @@ reason the diagram is still true.
 | **Domain is independent** | `user_api.domain` importing any other package. | A rule that quietly needs a store. The moment `domain/scopes.py` can see a row, "what does this token grant" stops being answerable by reading one function. |
 | **Layers point inward** | An import from a lower layer to a higher one. | `entries/` learning what an erasure mode is. It reports *who* has forgotten something; the sweeper, which holds the settings, decides what that means. |
 | **SQL stays behind the stores** | `api`, `auth` and `domain` importing `user_api.storage` or `sqlite3`, indirectly included. | A router that *could* write a query, which is a router that will eventually contain one -- and a query written outside a store is a query that forgot `account_id`. |
-| **Keyring is spoken to from one package only** | Every package except `auth` importing `jwt` or `httpx`, indirectly included. | "How do we decide who this is" having more than one place to look. It is also why `JwksClient.key_for` returns `Any` rather than `jwt.PyJWK`: a signature naming a library's type is how the library leaks out of the package meant to hold it. |
+| **Keyring is spoken to from one package only** | Every package except `auth` importing `jwt` or `httpx`, indirectly included. `core.config` is left off so it can validate the settings-api token with `keyring_client.check_service_token`. | "How do we decide who this is" having more than one place to look. It is also why `JwksClient.key_for` returns `Any` rather than `jwt.PyJWK`: a signature naming a library's type is how the library leaks out of the package meant to hold it. |
+| **Talking to settings-api stays behind the preferences module** | Every package except `core.preferences` importing `settings_client`. | A call site re-implementing caching, revalidation, single-flight and outage behaviour, slightly wrong, and presenting a user token without the one module that knows how to degrade. |
 
 The layers contract is declared `exhaustive = false`, so `core/` sits outside it
-deliberately: config, the clock, logging and the request context are a shared kernel, and
-the composition root in `core/container.py` is the one module that is allowed to know every
-adapter by name.
+deliberately: config, the clock, logging, preferences and the request context are a shared
+kernel, and the composition root in `core/container.py` is the one module that is allowed to
+know every adapter by name.
 
 ## Ports and adapters
 
@@ -78,7 +79,7 @@ under `TYPE_CHECKING` and receives the adapter from the composition root.
 | `entries.store.EntryStore` | `entries.sql_store.SqlEntryStore` | The biggest surface: fields, notes, scopes, search, the caps and the index. Every method takes `account_id`, and every read takes `granted`. |
 | `events.log.EventLog` | `events.sql_log.SqlEventLog` | Its write methods are **synchronous and take a live connection**, because an event has to be written in the transaction it describes. |
 | `users.store.UserStore` | `users.sql_store.SqlUserStore` | Existence and erasure. Holds no content -- a preferred name is a field. |
-| `users.settings.SettingsStore` | `users.sql_settings.SqlSettingsStore` | The one that will have a second implementation: a separate settings-api is the next service in this family, and it becomes a second adapter ([ADR-0007](adr/0007-settings-behind-a-port.md)). |
+| `users.settings.SettingsStore` | `users.sql_settings.SqlSettingsStore` | `erasure_mode`, `grace_days` and `log_values`. They stay here because the erasure sweeper has no user token to present to settings-api, and `log_values` is written by the public PUT and read by the event log on the same row. Request-path caps (`max_pinned`, `search_default_limit`) are read from settings-api in `core.preferences` instead. |
 | `core.clock.Clock` | `core.clock.SystemClock` | Three rules here are arithmetic on a date, and one is measured in days. |
 
 `tests/unit/test_ports.py` is the file that makes the Protocols mean something. A structural
@@ -93,7 +94,21 @@ exactly one SQLite file and swapping it means swapping the adapters above it.
 `TokenVerifier` and `JwksClient` are concrete because substituting them in a test would mean
 testing against a fake of the one component whose job is to be suspicious; the suite
 substitutes the *transport* underneath instead, and mints real RS256 tokens against a real
-JWKS document. `UserService` is concrete because it is the thing being tested.
+JWKS document. `UserService` is concrete because it is the thing being tested. Preferences
+are a `PreferenceSource` protocol in `core.preferences`, constructed in the composition
+root and never fetched at startup: an empty `USER_API_SETTINGS_API_BASE_URL` keeps
+today's behaviour exactly.
+
+**Why erasure did not move.** settings-api's catalogue lists `user.erasure_mode`,
+`user.grace_days` and `user.log_values` as well as the two request-path caps. The sweeper
+(`Erasure.sweep_once`) reads the first two for every account with forgotten entries from a
+background task, with no request and so no user token. A local copy refreshed on each
+request would miss a person who switched to `tombstone` directly in settings-api until
+they next called user-api, and in the meantime the sweeper would destroy entries they had
+just asked to keep. `log_values` is written by `PUT /v1/user/settings` and read by the
+event log on the same row. So those three stay on `SqlSettingsStore`; only `max_pinned`
+and `search_default_limit` are read from settings-api, clamped to the deployment ceilings
+-- a person may lower them and never raise them.
 
 There is no `save(entry)` anywhere. Writing a whole entry back means writing back everything
 a caller read some time ago, so two requests revising two different parts of one entry each

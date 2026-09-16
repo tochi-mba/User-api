@@ -239,3 +239,63 @@ class TestDeliberateAbsences:
 
         assert not hasattr(settings, "allowed_algorithms")
         assert not hasattr(settings, "jwt_shared_secret")
+
+
+SETTINGS_API_TOKEN = "settings-api-token-for-user-api-tests01"
+SETTINGS_API_URL = "https://settings.test"
+
+
+class TestSettingsApi:
+    """Per-person settings are off unless configured, and configured whole or not at all."""
+
+    def test_it_is_off_unless_configured(self) -> None:
+        assert build().settings_api is None
+
+    def test_a_base_url_and_a_token_together_turn_it_on(self) -> None:
+        settings = build(
+            settings_api_base_url=SETTINGS_API_URL, settings_api_token=SETTINGS_API_TOKEN
+        )
+
+        assert settings.settings_api is not None
+        base_url, token = settings.settings_api
+        assert base_url == SETTINGS_API_URL
+        assert token.get_secret_value() == SETTINGS_API_TOKEN
+
+    @pytest.mark.parametrize(
+        "half",
+        [
+            {"settings_api_base_url": SETTINGS_API_URL},
+            {"settings_api_token": SETTINGS_API_TOKEN},
+        ],
+    )
+    def test_half_a_configuration_refuses_to_start(self, half: dict[str, str]) -> None:
+        with pytest.raises(ValidationError, match="set together"):
+            build(**half)
+
+    def test_a_blank_base_url_means_off(self) -> None:
+        assert build(settings_api_base_url="").settings_api_base_url is None
+
+    def test_a_short_token_is_refused_without_being_echoed(self) -> None:
+        with pytest.raises(ValidationError) as caught:
+            build(settings_api_base_url=SETTINGS_API_URL, settings_api_token="short-token")
+
+        # The message we raise never interpolates the presented value. pydantic's error
+        # envelope may still name the input -- that is its record of what was passed, not
+        # ours -- so the assertion is on the messages we wrote.
+        messages = [error["msg"] for error in caught.value.errors()]
+        assert messages
+        assert all("short-token" not in message for message in messages)
+        assert any("32" in message for message in messages)
+
+    def test_the_token_does_not_render_itself(self) -> None:
+        settings = build(
+            settings_api_base_url=SETTINGS_API_URL, settings_api_token=SETTINGS_API_TOKEN
+        )
+
+        assert SETTINGS_API_TOKEN not in repr(settings)
+
+    def test_the_prefixed_names_are_recognised(self) -> None:
+        names = known_env_names()
+
+        assert f"{ENV_PREFIX}SETTINGS_API_BASE_URL" in names
+        assert f"{ENV_PREFIX}SETTINGS_API_TOKEN" in names

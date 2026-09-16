@@ -14,16 +14,25 @@ from typing import TYPE_CHECKING
 
 from asgi_lifespan import LifespanManager
 from httpx import ASGITransport, AsyncClient
+from settings_client.testing import FakeSettingsClient
 
-from tests.conftest import auth, container_of, token
+from tests.conftest import auth, build_settings, container_of, token
 from user_api.api.app import create_app, start, stop
 from user_api.core.container import Container
+from user_api.core.preferences import (
+    DeploymentPreferences,
+    PreferenceSource,
+    SettingsApiPreferences,
+    build_preference_source,
+)
 from user_api.entries.store import EntryStore
 from user_api.events.log import EventLog
 from user_api.users.settings import SettingsStore
 from user_api.users.store import UserStore
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from fastapi import FastAPI
 
     from tests.fakes.clock import FakeClock
@@ -40,9 +49,11 @@ class TestStartupDoesNotNeedKeyring:
         async with LifespanManager(app):
             assert keyring.fetches == 0
 
-    async def test_it_serves_health_with_keyring_unreachable(
+    async def test_liveness_is_served_with_keyring_unreachable(
         self, app: FastAPI, keyring: FakeKeyring
     ) -> None:
+        # An orchestrator restarts a container whose liveness check fails, and restarting
+        # this process does not fix keyring, so /healthy asks it nothing.
         import httpx
 
         keyring.error = httpx.ConnectError("keyring is not there")
@@ -53,21 +64,55 @@ class TestStartupDoesNotNeedKeyring:
         ):
             response = await http.get("/healthy")
 
+        assert response.status_code == 200
+        assert response.json()["status"] == "alive"
+        assert keyring.fetches == 0
+
+    async def test_readiness_reports_keyring_being_unreachable(
+        self, app: FastAPI, keyring: FakeKeyring
+    ) -> None:
+        import httpx
+
+        keyring.error = httpx.ConnectError("keyring is not there")
+
+        async with (
+            LifespanManager(app),
+            AsyncClient(transport=ASGITransport(app=app), base_url="http://app.test") as http,
+        ):
+            response = await http.get("/ready")
+
         assert response.status_code == 503
         assert response.json()["checks"]["keyring"]["status"] == "degraded"
 
-    async def test_health_survives_a_failure_nobody_anticipated(
+    async def test_readiness_is_ok_once_keyring_answers(
         self, app: FastAPI, keyring: FakeKeyring
     ) -> None:
-        # /healthy must never 500. A load balancer would see the same status for "keyring
-        # is down" as for "this process is broken", and those need different people.
+        # Readiness asks keyring itself rather than waiting for a token to find out, so a
+        # fresh process reports what is true now rather than what an earlier request found.
+        async with (
+            LifespanManager(app),
+            AsyncClient(transport=ASGITransport(app=app), base_url="http://app.test") as http,
+        ):
+            response = await http.get("/ready")
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+        assert response.json()["checks"]["keyring"]["detail"]["reachable"] is True
+        assert keyring.fetches == 1
+
+    async def test_readiness_survives_a_failure_nobody_anticipated(
+        self, app: FastAPI, keyring: FakeKeyring
+    ) -> None:
+        # Neither probe may ever 500. A load balancer would see the same status for
+        # "keyring is down" as for "this process is broken", and those need different
+        # people out of bed.
         keyring.error = RuntimeError("something nobody wrote a handler for")
 
         async with (
             LifespanManager(app),
             AsyncClient(transport=ASGITransport(app=app), base_url="http://app.test") as http,
         ):
-            response = await http.get("/healthy")
+            response = await http.get("/ready")
 
         assert response.status_code == 503
         assert response.json()["checks"]["keyring"]["status"] == "degraded"
@@ -95,11 +140,13 @@ class TestTheContainer:
         checked_events: EventLog = container.events
         checked_users: UserStore = container.users
         checked_settings: SettingsStore = container.user_settings
+        checked_preferences: PreferenceSource = container.preferences
 
         assert isinstance(checked_entries, EntryStore)
         assert isinstance(checked_events, EventLog)
         assert isinstance(checked_users, UserStore)
         assert isinstance(checked_settings, SettingsStore)
+        assert isinstance(checked_preferences, DeploymentPreferences)
 
     def test_uptime_is_measured_on_the_injected_clock(
         self, settings: Settings, clock: FakeClock
@@ -133,6 +180,35 @@ class TestTheContainer:
 
         assert not hasattr(built.state, "prebuilt")
         assert built.state.settings is settings
+
+
+class TestPreferencesWiring:
+    def test_without_settings_api_everybody_gets_the_configuration(
+        self, settings: Settings, clock: FakeClock
+    ) -> None:
+        container = Container.build(settings, clock=clock)
+
+        assert isinstance(container.preferences, DeploymentPreferences)
+
+    async def test_a_configured_settings_api_is_read_per_person_and_closed_with_the_rest(
+        self, tmp_path: Path, clock: FakeClock
+    ) -> None:
+        settings = build_settings(
+            tmp_path,
+            settings_api_base_url="https://settings.test",
+            settings_api_token="settings-api-token-for-user-api-tests01",
+        )
+        container = Container.build(settings, clock=clock)
+
+        assert isinstance(container.preferences, SettingsApiPreferences)
+        await container.aclose()
+
+    def test_preferences_can_be_substituted(self, settings: Settings, clock: FakeClock) -> None:
+        source = build_preference_source(settings, client=FakeSettingsClient())
+
+        container = Container.build(settings, clock=clock, preferences=source)
+
+        assert container.preferences is source
 
 
 class TestTheSweeper:
