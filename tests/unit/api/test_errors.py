@@ -32,6 +32,7 @@ from user_api.domain.errors import (
     EntryNotFoundError,
     KeyringUnreachableError,
     LimitExceededError,
+    PreferencesUnavailableError,
     ScopeConflictError,
     ScopeNotGrantedError,
 )
@@ -83,6 +84,9 @@ _BY_NAME: dict[str, Exception] = {
     "conflict": ScopeConflictError("a field named 'x' already exists outside this scope"),
     "limit": LimitExceededError("at most 40 pinned entries"),
     "keyring": KeyringUnreachableError("keyring's signing keys could not be fetched"),
+    "preferences": PreferencesUnavailableError(
+        "settings-api did not accept this service's request for your settings"
+    ),
 }
 
 
@@ -140,6 +144,7 @@ class TestTheStatusMapping:
             ("scope", status.HTTP_403_FORBIDDEN),
             ("conflict", status.HTTP_409_CONFLICT),
             ("limit", status.HTTP_409_CONFLICT),
+            ("preferences", status.HTTP_503_SERVICE_UNAVAILABLE),
         ],
     )
     async def test_a_domain_error_becomes_its_status(
@@ -181,6 +186,17 @@ class TestTheStatusMapping:
         assert response.status_code == 503
         assert response.headers[RETRY_AFTER_HEADER] == "5"
         assert response.json()["type"].endswith("keyring-unreachable")
+
+    async def test_settings_api_refusing_this_service_is_503_with_fixed_text(
+        self, client: AsyncClient
+    ) -> None:
+        # Not a 4xx, and not the grant named in settings-api's own body. Serving defaults
+        # would hide a missing grant behind behaviour that happened to work.
+        response = await client.get("/raises/preferences")
+
+        assert response.status_code == 503
+        assert "granted" not in response.json()["detail"]
+        assert "settings-api did not accept" in response.json()["detail"]
 
     async def test_a_starlette_http_exception_is_rendered_in_the_same_shape(
         self, client: AsyncClient

@@ -1,7 +1,7 @@
 # The HTTP contract
 
 One service, one `/openapi.json`, served at `/docs`. Everything under `/v1` requires a
-bearer token; `/healthy` does not, because a load balancer cannot hold one.
+bearer token; `/healthy` and `/ready` do not, because a load balancer cannot hold one.
 
 Route `operation_id`s are **public API** -- they become MCP tool names
 ([docs/mcp.md](mcp.md)) -- so renaming one is a breaking change for every client with a tool
@@ -102,7 +102,8 @@ write that did not happen makes every other promise here unfalsifiable, and a 40
 
 | Operation | Route | Notes |
 | --- | --- | --- |
-| `get_health` | `GET /healthy` | Unauthenticated. 200 when everything is usable, 503 when any check fails, same body either way. |
+| `get_health` | `GET /healthy` | Unauthenticated liveness. No I/O, and it never fails. |
+| `check_readiness` | `GET /ready` | Unauthenticated. 200 when everything is usable, 503 when any check fails, same body either way. |
 
 Reports the version, the environment, uptime, a process-wide entry count and whether
 keyring's keys are fetchable. No per-account anything: a count that moved when one person

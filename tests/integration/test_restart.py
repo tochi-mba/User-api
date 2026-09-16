@@ -22,6 +22,7 @@ from tests.conftest import ACCOUNT, auth, build_settings, set_field, write_note
 from tests.conftest import token as _token
 from tests.fakes.clock import FakeClock
 from tests.fakes.keyring import FakeKeyring
+from tests.support.filemode import assert_mode
 from user_api.api.app import create_app
 from user_api.core.container import Container
 
@@ -267,4 +268,4 @@ class TestTheFileItself:
             await set_field(first, token(), "preferred_name", value="Sam")
 
         async with running(durable):
-            assert durable.database_path.stat().st_mode & 0o777 == 0o600
+            assert_mode(durable.database_path, 0o600)

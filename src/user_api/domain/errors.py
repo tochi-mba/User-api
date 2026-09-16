@@ -139,3 +139,12 @@ class CredentialRefusedError(DomainError, ValueError):
 
 class LimitExceededError(DomainError):
     """A per-account limit would be exceeded. Names the limit, so a caller can act on it."""
+
+
+class PreferencesUnavailableError(DomainError):
+    """A person's settings were needed and could not be read honestly.
+
+    Either settings-api refused this service -- a grant it was not given, a token it does
+    not recognise -- or it cannot be reached and the setting in question is one that must
+    not be guessed at. Neither is the caller's doing, so it is not a 4xx.
+    """

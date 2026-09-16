@@ -26,6 +26,7 @@ from user_api.domain.errors import (
     InvalidValueError,
     KeyringUnreachableError,
     LimitExceededError,
+    PreferencesUnavailableError,
     ScopeConflictError,
     ScopeNotGrantedError,
 )
@@ -49,6 +50,7 @@ NOT_BAD_INPUT = [
     ScopeConflictError,
     EntryNotFoundError,
     LimitExceededError,
+    PreferencesUnavailableError,
 ]
 """Errors about who the caller is, what exists, or what this service could do."""
 

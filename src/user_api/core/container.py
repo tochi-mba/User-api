@@ -3,8 +3,13 @@
 Every adapter is chosen and wired here, once, and handed to the app. Nothing else
 constructs its own dependencies -- which is what makes the whole service testable by
 substitution, and what keeps "which settings store" a configuration decision rather than
-a code one. When the settings-api lands, one line in this file changes and nothing above
-the port notices.
+a code one.
+
+settings-api is wired only for the request-path caps -- ``max_pinned`` and
+``search_default_limit``. ``erasure_mode``, ``grace_days`` and ``log_values`` stay on
+:class:`~user_api.users.sql_settings.SqlSettingsStore` because the sweeper has no user
+token to present, and dual-writing ``log_values`` without one would be half-wiring. An
+empty URL keeps today's behaviour exactly.
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ from user_api.auth.jwks import JwksClient
 from user_api.auth.tokens import TokenVerifier
 from user_api.core.clock import SystemClock
 from user_api.core.logging import get_logger
+from user_api.core.preferences import build_preference_source
 from user_api.entries.sql_store import SqlEntryStore
 from user_api.events.sql_log import SqlEventLog
 from user_api.storage.database import Database
@@ -30,6 +36,7 @@ from user_api.users.sql_store import SqlUserStore
 if TYPE_CHECKING:
     from user_api.core.clock import Clock
     from user_api.core.config import Settings
+    from user_api.core.preferences import PreferenceSource
     from user_api.entries.store import EntryStore
     from user_api.events.log import EventLog
     from user_api.users.settings import SettingsStore
@@ -56,16 +63,29 @@ class Container:
     service: UserService
     jwks: JwksClient
     verifier: TokenVerifier
+    preferences: PreferenceSource
     started_monotonic: float
     _sweeper: asyncio.Task[None] | None = None
 
     @classmethod
-    def build(cls, settings: Settings, *, clock: Clock | None = None) -> Container:
+    def build(
+        cls,
+        settings: Settings,
+        *,
+        clock: Clock | None = None,
+        preferences: PreferenceSource | None = None,
+    ) -> Container:
         """Construct every adapter named by ``settings``.
 
         Nothing here reaches keyring. The JWKS client is constructed and does not fetch:
         a service that refused to start unless keyring were reachable would turn one
         outage into two, at the moment these two services are being restarted together.
+
+        Args:
+            settings: the configuration to wire.
+            clock: substituted by tests that need to control time.
+            preferences: substituted by tests, which read people's settings from a fake
+                settings-api rather than a real one.
         """
         clock = clock or SystemClock()
         database = Database(settings.database_path)
@@ -89,7 +109,13 @@ class Container:
             cache_seconds=settings.jwks_cache_seconds,
             min_refetch_seconds=settings.jwks_min_refetch_seconds,
             timeout_seconds=settings.keyring_http_timeout_seconds,
+            # The shared client's diagnostics -- a refused key id, a fetch that failed -- land
+            # in this service's structured, redacted log rather than the standard library's.
+            logger=get_logger("user_api.auth.jwks"),
         )
+        # Same rule for settings-api: constructed here, contacted on the first request that
+        # needs somebody's own caps. An empty URL keeps today's behaviour exactly.
+        chosen = preferences if preferences is not None else build_preference_source(settings)
 
         return cls(
             settings=settings,
@@ -109,6 +135,7 @@ class Container:
                 database=database,
                 clock=clock,
                 config=settings,
+                preferences=chosen,
             ),
             jwks=jwks,
             verifier=TokenVerifier(
@@ -118,6 +145,7 @@ class Container:
                 allowed_scopes=settings.allowed_scopes,
                 clock=clock,
             ),
+            preferences=chosen,
             started_monotonic=clock.monotonic(),
         )
 
@@ -137,6 +165,7 @@ class Container:
                 await self._sweeper
             self._sweeper = None
 
+        await self.preferences.aclose()
         await self.jwks.aclose()
         # Last: everything above may still want to write on its way out.
         await self.database.aclose()

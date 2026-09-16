@@ -59,9 +59,10 @@ class TestAdaptersSatisfyTheirPorts:
         assert isinstance(checked, UserStore)
 
     def test_the_settings_adapter_is_a_settings_store(self, database: Database) -> None:
-        # The one that will have a second implementation. When settings-api lands it
-        # satisfies this same port and is swapped in at the composition root, and this
-        # assertion is what says the swap is legitimate rather than merely plausible.
+        # erasure_mode, grace_days and log_values stay behind this port because the
+        # sweeper has no user token to present to settings-api. Request-path caps
+        # (max_pinned, search_default_limit) are read from settings-api in
+        # core.preferences instead, and never through this store.
         checked: SettingsStore = SqlSettingsStore(database=database)
 
         assert isinstance(checked, SettingsStore)

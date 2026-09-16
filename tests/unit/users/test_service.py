@@ -21,6 +21,7 @@ from tests.conftest import ACCOUNT, OTHER_ACCOUNT, SCOPES, build_settings
 from tests.fakes.clock import FakeClock
 from user_api.auth.tokens import Identity
 from user_api.core.config import Settings
+from user_api.core.preferences import build_preference_source
 from user_api.domain.cursors import Ordering
 from user_api.domain.entries import EntryType, NoteKind, Sensitivity, Source
 from user_api.domain.errors import (
@@ -99,6 +100,7 @@ def service(database: Database, clock: FakeClock, config: Settings) -> UserServi
         database=database,
         clock=clock,
         config=config,
+        preferences=build_preference_source(config),
     )
 
 
