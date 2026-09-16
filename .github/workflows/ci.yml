@@ -3,6 +3,7 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  workflow_dispatch:
 jobs:
   service:
     uses: tochi-mba/LUCY-assistant/.github/workflows/service.yml@v1
