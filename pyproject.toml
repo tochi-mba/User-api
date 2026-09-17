@@ -3,15 +3,15 @@ name = "user-api"
 version = "0.1.0"
 description = "Structured, scoped, erasable knowledge about the person an assistant is talking to."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "tochi-mba" }]
 keywords = ["fastapi", "memory", "mcp", "personal-data", "privacy"]
 classifiers = [
     "Private :: Do Not Upload",
     "Framework :: FastAPI",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Typing :: Typed",
 ]
 dependencies = [
@@ -56,7 +56,7 @@ packages = ["src/user_api"]
 # --------------------------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -146,7 +146,7 @@ convention = "google"
 # Types
 # --------------------------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 files = ["src", "tests"]
 strict = true
 warn_unreachable = true

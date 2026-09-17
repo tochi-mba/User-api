@@ -72,7 +72,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 from user_api.core.logging import get_logger
 
@@ -81,8 +81,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 logger = get_logger(__name__)
-
-T = TypeVar("T")
 
 DATABASE_FILE_MODE = 0o600
 """Owner-only. SQLite would otherwise create these 0644; see the module docstring."""
@@ -184,7 +182,7 @@ class Database:
         logger.info("database_opened", journal_mode=journal_mode)
         return connection
 
-    def run_sync(self, work: Callable[[sqlite3.Connection], T]) -> T:
+    def run_sync[T](self, work: Callable[[sqlite3.Connection], T]) -> T:
         """Run ``work`` on the worker thread, blocking the caller until it finishes.
 
         For startup only -- opening the database and migrating it happen before there is
@@ -193,7 +191,7 @@ class Database:
         """
         return self._executor.submit(work, self._connection).result()
 
-    async def run(self, work: Callable[[sqlite3.Connection], T]) -> T:
+    async def run[T](self, work: Callable[[sqlite3.Connection], T]) -> T:
         """Run ``work`` on the worker thread, outside any transaction.
 
         For reads. A single SQLite statement is atomic by itself, so a read needs no
@@ -203,7 +201,7 @@ class Database:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, work, self._connection)
 
-    async def transact(self, work: Callable[[sqlite3.Connection], T]) -> T:
+    async def transact[T](self, work: Callable[[sqlite3.Connection], T]) -> T:
         """Run ``work`` as one ``BEGIN IMMEDIATE`` transaction.
 
         The whole transaction is one submitted callable, which is what makes it
@@ -275,7 +273,9 @@ class Database:
         self._executor.shutdown(wait=True)
 
 
-def _in_transaction(connection: sqlite3.Connection, work: Callable[[sqlite3.Connection], T]) -> T:
+def _in_transaction[T](
+    connection: sqlite3.Connection, work: Callable[[sqlite3.Connection], T]
+) -> T:
     """Run ``work`` between ``BEGIN IMMEDIATE`` and ``COMMIT``, rolling back on anything."""
     connection.execute("BEGIN IMMEDIATE")
     try:

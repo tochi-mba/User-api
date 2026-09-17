@@ -3,7 +3,7 @@
 # A plain slim base. This service makes one kind of outbound call -- fetching a JWKS
 # document -- and writes one small file. The less there is in the process holding somebody's
 # personal data, the less there is in it to go wrong.
-FROM python:3.11-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
