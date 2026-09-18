@@ -32,7 +32,8 @@ class TestGrantedScope:
         assert granted_scope(f"user.{scope}", prefix=PREFIX, allowed=ALLOWED) == scope
 
     @pytest.mark.parametrize(
-        "audience", ["media-tool", "media-tool.home", "keyring", "", "userx", "user-health"]
+        "audience",
+        ["downstream-tool", "downstream-tool.home", "keyring", "", "userx", "user-health"],
     )
     def test_an_audience_for_another_service_is_refused(self, audience: str) -> None:
         # The case that matters most: a token minted for another service, presented here.

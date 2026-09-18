@@ -113,7 +113,7 @@ class Settings(BaseSettings):
     """The family of audiences this service answers to.
 
     ``user`` alone grants nothing beyond unscoped entries; ``user.health`` grants
-    the ``health`` scope. A token minted for ``media-tool`` is refused outright.
+    the ``health`` scope. A token minted for ``example-tool`` is refused outright.
     """
 
     allowed_scopes: tuple[str, ...] = ("home", "work", "health", "family", "finance")

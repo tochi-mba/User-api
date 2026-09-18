@@ -139,7 +139,7 @@ class TestAudience:
 
         assert identity.granted_scope == scope
 
-    @pytest.mark.parametrize("audience", ["media-tool", "users", "user-api", "settings.user"])
+    @pytest.mark.parametrize("audience", ["downstream-tool", "users", "user-api", "settings.user"])
     async def test_a_token_minted_for_another_service_is_refused(
         self, verifier: TokenVerifier, audience: str
     ) -> None:
@@ -200,7 +200,7 @@ class TestOneRefusalForEverything:
         """One message, byte for byte, whichever rule did the refusing -- the shared rules or
         this service's own scope rule. Which rule refused goes to the logs."""
         refusals = [
-            mint(audience="media-tool"),
+            mint(audience="downstream-tool"),
             mint(audience="user.dinosaurs"),
             mint(issuer=OTHER_ISSUER),
             forge_hs256(),

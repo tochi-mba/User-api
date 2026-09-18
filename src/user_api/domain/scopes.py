@@ -56,7 +56,7 @@ def granted_scope(audience: str, *, prefix: str, allowed: tuple[str, ...]) -> st
 
     head, separator, scope = audience.partition(AUDIENCE_SEPARATOR)
     if not separator or head != prefix:
-        # Includes the case that matters most: a token minted for `media-tool` presented
+        # Includes the case that matters most: a token minted for `example-tool` presented
         # here. Verifying it against our own audience would have failed anyway, but this
         # is where it is named.
         msg = f"audience {audience!r} is not in the {prefix!r} family"

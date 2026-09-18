@@ -20,7 +20,7 @@ from user_api.core.logging import configure_logging, get_logger
 from user_api.core.version import service_version
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
 logger = get_logger(__name__)
 
@@ -105,7 +105,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 @asynccontextmanager
-async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Build the container on startup and shut it down cleanly on the way out."""
     container = start(app)
     try:
