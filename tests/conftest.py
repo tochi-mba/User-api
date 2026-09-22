@@ -112,20 +112,28 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-def app(settings: Settings, clock: FakeClock, keyring: FakeKeyring) -> FastAPI:
+async def app(settings: Settings, clock: FakeClock, keyring: FakeKeyring) -> AsyncIterator[FastAPI]:
     """An app wired to the fake clock and the fake keyring.
 
     The container is built here and parked on the app before the lifespan runs, and
     :func:`user_api.api.app.start` then finds it already there. That is the one seam this
     suite needs: ``create_app`` deliberately builds its own container, and a test that
     could not substitute the clock could not test a grace period without waiting a month.
+
+    Building the container opens the database. A test that reads the app without ever
+    running its lifespan -- the OpenAPI contract tests do -- would otherwise leave that
+    connection for the garbage collector, which Python 3.13 reports and this suite treats
+    as a failure. Closing is idempotent, so a test that did run the lifespan loses nothing.
     """
     built = create_app(settings)
     container = Container.build(settings, clock=clock)
     container.jwks._client = AsyncClient(transport=keyring.transport())
     built.state.container = container
     built.state.prebuilt = container
-    return built
+    try:
+        yield built
+    finally:
+        await container.aclose()
 
 
 @pytest.fixture

@@ -354,6 +354,16 @@ class TestClosing:
         await database.aclose()
         await database.aclose()
 
+    async def test_the_synchronous_close_shares_the_flag(self, tmp_path: Path) -> None:
+        # The composition root closes without an event loop when its startup fails after
+        # the open. Both closes read one flag, so whichever runs first is the one that
+        # closes and every later close, of either kind, is a no-op.
+        database = Database(tmp_path / "sync.db")
+
+        database.close()
+        database.close()
+        await database.aclose()
+
     async def test_what_was_written_survives_the_close(self, tmp_path: Path) -> None:
         path = tmp_path / "survivor.db"
         first = Database(path)
