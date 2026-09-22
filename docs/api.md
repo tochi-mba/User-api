@@ -181,15 +181,15 @@ endpoint gets a confidently empty answer.
 | `cursor` | From the previous page's `next_cursor`. |
 
 Failure modes: 422 for a query with no word characters at all (`"*"`, `"()"`, `"   "`), for
-an unfoldable key or key prefix, and for a cursor that is malformed or was issued for a
-different ordering; 403 for a `scope` you do not hold. A query containing punctuation,
-`AND`, `OR`, `NEAR` or quotes is **not** a failure -- every token is quoted into a literal,
-so `x AND OR y` is four words to look for rather than a syntax error
-([ADR-0008](adr/0008-keyword-search-not-embeddings.md)).
+an unfoldable key or key prefix, for `order=relevance` without `q`, and for a cursor that
+is malformed or was issued for a different ordering; 403 for a `scope` you do not hold. A
+query containing punctuation, `AND`, `OR`, `NEAR` or quotes is **not** a failure -- every
+token is quoted into a literal, so `x AND OR y` is four words to look for rather than a
+syntax error ([ADR-0008](adr/0008-keyword-search-not-embeddings.md)).
 
-One rough edge worth knowing: `?order=relevance` **without** `q` is a 500 today. Relevance
-is not a thing you ask for -- it is what you get when you pass `q` -- and the value exists
-on the enum because it is baked into the cursors a ranked page issues.
+Relevance is not a thing you ask for -- it is what you get when you pass `q`. The value
+exists on the enum because it is baked into the cursors a ranked page issues. Asking for
+it without a query is a 422 that says so.
 
 **`get_entry`** and **`get_field`** return one entry; the key is normalised first, so any
 spelling of it finds the same field. Anything you may not see is a 404.

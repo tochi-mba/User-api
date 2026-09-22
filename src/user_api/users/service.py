@@ -50,7 +50,7 @@ from user_api.domain.entries import (
     validate_description,
     validate_note_body,
 )
-from user_api.domain.errors import CredentialRefusedError, EntryNotFoundError
+from user_api.domain.errors import CredentialRefusedError, EntryNotFoundError, InvalidSearchError
 from user_api.domain.keys import WELL_KNOWN_KEYS, normalize_key, normalize_key_prefix
 from user_api.domain.scopes import check_filterable, check_known, check_writable
 from user_api.domain.secrets import KEYRING_ADVICE, looks_like_a_credential
@@ -228,7 +228,15 @@ class UserService:
             # not have and got an empty page caches the emptiness and stops asking.
             check_filterable(filters.scope, granted=identity.granted_scope)
 
-        effective = Ordering.RELEVANCE if filters.query is not None else ordering
+        if filters.query is not None:
+            effective = Ordering.RELEVANCE
+        elif ordering is Ordering.RELEVANCE:
+            # Relevance is a ranking, not a sort. Without a query there is no score, and
+            # the SQL layer would KeyError on an ordering it never indexed.
+            msg = "order=relevance needs a q; without a query there is nothing to rank"
+            raise InvalidSearchError(msg)
+        else:
+            effective = ordering
         caps = await self._caps(identity)
         return await self._entries.search(
             identity.account_id,

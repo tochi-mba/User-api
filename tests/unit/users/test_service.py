@@ -30,6 +30,7 @@ from user_api.domain.errors import (
     InvalidDescriptionError,
     InvalidKeyError,
     InvalidScopeError,
+    InvalidSearchError,
     InvalidValueError,
     ScopeNotGrantedError,
 )
@@ -612,6 +613,10 @@ class TestReading:
         )
 
         assert page.entries[0].rank is not None
+
+    async def test_relevance_without_a_query_is_refused(self, service: UserService) -> None:
+        with pytest.raises(InvalidSearchError, match="needs a q"):
+            await service.search(identity(), filters=Filters(), ordering=Ordering.RELEVANCE)
 
     async def test_a_limit_is_clamped_rather_than_refused(
         self, service: UserService, config: Settings

@@ -315,6 +315,18 @@ class TestOrdering:
         stamps = [entry["created_at"] for entry in page["entries"]]
         assert stamps == sorted(stamps)
 
+    async def test_relevance_without_a_query_is_refused(
+        self, client: AsyncClient, furnished: dict[str, Any]
+    ) -> None:
+        response = await client.get(
+            "/v1/user/entries",
+            params={"order": "relevance"},
+            headers=auth(furnished["token"]),
+        )
+
+        assert response.status_code == 422
+        assert "needs a q" in response.text
+
 
 class TestPagination:
     async def test_a_walk_sees_every_entry_exactly_once(
