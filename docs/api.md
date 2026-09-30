@@ -74,6 +74,7 @@ input that failed.
 | **422** | Malformed key, value, description, note, scope name, search query or cursor; or a value that looks like a credential. | Nothing has touched the database. |
 | **500** | A bug. | Detail withheld; quote the request id. |
 | **503** | keyring's signing keys could not be fetched, so your token could not be checked either way. Carries `Retry-After: 5`. | Not a 401. A 401 tells a person to log in again because *we* could not fetch a public key, and logging in again would not have helped. |
+| **503** without `Retry-After` | settings-api is configured and refused this service, or a setting could not be read. | A deployment problem: the operator's grant in settings-api is wrong. Guessing the person's settings instead would be worse. |
 
 There is no rate limiting on this service, so nothing produces a 429. The one rate limit
 that exists is internal: a token naming an unknown key id can provoke at most one JWKS
@@ -330,6 +331,7 @@ curl -s "$BASE/v1/user/entries?stale_before=2025-09-11T00:00:00Z&limit=5" \
   -H "Authorization: Bearer $TOKEN"
 
 # 7. They said it still holds. Touches confirmed_at and nothing else.
+#    ENTRY_ID is the entry_id from any answer above, such as the note from step 4.
 curl -sX POST $BASE/v1/user/entries/$ENTRY_ID/confirm -H "Authorization: Bearer $TOKEN"
 
 # 8. They asked you to forget it. Invisible immediately; what happens to the bytes
