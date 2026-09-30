@@ -22,8 +22,8 @@ What it proves, in order:
 
 Usage::
 
-    USER_API_SMOKE_KEYRING=http://127.0.0.1:8001 \\
-    USER_API_SMOKE_BASE=http://127.0.0.1:8002 \\
+    SMOKE_KEYRING_URL=http://127.0.0.1:8001 \\
+    SMOKE_USER_API_URL=http://127.0.0.1:8002 \\
     KEYRING_ADMIN_TOKEN=... uv run python scripts/smoke.py
 
 The keyring side needs an admin token because a fresh keyring is invite-only: the script
@@ -40,8 +40,8 @@ import sys
 
 import httpx
 
-KEYRING = os.environ.get("USER_API_SMOKE_KEYRING", "http://127.0.0.1:8001")
-BASE = os.environ.get("USER_API_SMOKE_BASE", "http://127.0.0.1:8002")
+KEYRING = os.environ.get("SMOKE_KEYRING_URL", "http://127.0.0.1:8001")
+BASE = os.environ.get("SMOKE_USER_API_URL", "http://127.0.0.1:8002")
 ADMIN = os.environ.get("KEYRING_ADMIN_TOKEN", "")
 PASSWORD = "correct horse battery staple"  # noqa: S105 -- a throwaway for a throwaway account
 TIMEOUT = 10.0
