@@ -29,9 +29,9 @@ compartment of it you can see.
 
 ## Its relationship to keyring
 
-[keyring](../keyring-api) is the first service in this family and holds accounts and
-credentials. This is the second, and it has no accounts of its own: no registration, no
-login, no password, and no way to ask keyring anything about a person. The only identity it
+[keyring](https://github.com/tochi-mba/Keyring-api) holds the family's accounts and
+credentials. This service has no accounts of its own: no registration, no login, no
+password, and no way to ask keyring anything about a person. The only identity it
 ever learns is the `sub` of a token keyring signed.
 
 Tokens are verified **locally**, against the JWKS document keyring publishes. This service
@@ -61,8 +61,19 @@ make run                                  # http://127.0.0.1:8002/docs
 
 Every route except `GET /healthy` and `GET /ready` needs a bearer token from keyring's
 `POST /v1/auth/service-token`, minted with audience `user` (unscoped entries only) or
-`user.<scope>` (those, plus entries tagged with that scope). A `USER_API_`-prefixed
-environment variable that matches no setting is a **startup error**, not a warning.
+`user.<scope>` (those, plus entries tagged with that scope). The defaults expect keyring on
+`http://127.0.0.1:8001`, which is where its own `make run` serves. With a keyring session
+token in `$SESSION`:
+
+```bash
+TOKEN=$(curl -sX POST http://127.0.0.1:8001/v1/auth/service-token \
+  -H "Authorization: Bearer $SESSION" -H 'Content-Type: application/json' \
+  -d '{"audience":"user"}' | jq -r .token)
+curl -s http://127.0.0.1:8002/v1/user -H "Authorization: Bearer $TOKEN"
+```
+
+A `USER_API_`-prefixed environment variable that matches no setting is a **startup
+error**, not a warning.
 
 `make check` is the gate: format, lint, strict types, the five layering contracts, and the
 suite at 100% branch coverage.
