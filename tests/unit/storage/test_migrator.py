@@ -144,7 +144,7 @@ class TestAtomicity:
             lambda connection: connection.execute(
                 "CREATE TABLE IF NOT EXISTS schema_version ("
                 "  version INTEGER NOT NULL PRIMARY KEY, applied_at TEXT NOT NULL) STRICT"
-            )
+            ).close()
         )
 
         with pytest.raises(Exception, match="UNIQUE constraint"):
