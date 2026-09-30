@@ -206,8 +206,8 @@ sentinel.
 ordering matters more than it looks: the other way round, entries whose grace period
 expired while the service was stopped would sit there for a further whole hour after it
 came back, and somebody who deleted something yesterday and restarted this morning is
-entitled to have it gone this morning. Each pass asks which accounts hold a forgotten entry, reads each one's settings, skips the
-accounts on `tombstone`, and purges up to 500 entries per account -- bounded so one account
+entitled to have it gone this morning. Each pass asks which accounts hold a forgotten entry,
+reads each one's settings, skips the accounts on `tombstone`, and purges up to 500 entries per account -- bounded so one account
 with a large backlog cannot hold the single database thread for an unbounded stretch. The
 remainder waits for the next hour. The checkpoint runs once per sweep, not once per entry,
 which is what keeps a cheap step cheap.
@@ -246,27 +246,32 @@ Three things follow, and all three are yours:
 
 ## When keyring is down
 
-Every authenticated request fails with **503** and `Retry-After: 5`, not 401. That
-distinction is deliberate: a 401 would tell a person to log in again because *this* service
-could not fetch a public key, and logging in again would not have helped.
+Keys this service already holds keep working. A fetched key set is fresh for
+`USER_API_JWKS_CACHE_SECONDS` (an hour); after that, while keyring cannot be reached, the
+shared `keyring_client` keeps verifying against the keys it last fetched for up to 24 more
+hours, and logs `jwks_serving_stale_keys` each time it does. Through that grace, tokens
+signed by a `kid` already held are accepted and `/ready` stays `ok`, with the `keyring`
+check's `reason` saying cached keys are in use.
 
-What still works: `GET /healthy` answers 200 and `GET /ready` reports `keyring` as
-degraded. The database is
-fine and nothing is lost.
+Once no usable key is held -- a process that has never fetched, or keys older than the
+cache plus the grace -- every authenticated request fails with **503** and
+`Retry-After: 5`, not 401. That distinction is deliberate: a 401 would tell a person to log
+in again because *this* service could not fetch a public key, and logging in again would not
+have helped. `GET /healthy` still answers 200, `GET /ready` reports `keyring` as degraded
+and answers 503, and the database is fine: nothing is lost.
 
 What to expect around the edges:
 
-- **A cached key set lasts an hour** (`USER_API_JWKS_CACHE_SECONDS`). A keyring outage may
-  therefore be invisible here for up to an hour for tokens signed by a `kid` already held,
-  and `/ready` will keep reporting `ok` while the cache is fresh.
-- **A key rotation during an outage costs the first caller a 401.** An unknown `kid`
-  provokes at most one fetch per `USER_API_JWKS_MIN_REFETCH_SECONDS` (60 by default); a real
-  token arriving inside that window is refused with the same message a forgery gets. That is
-  the rate limit working -- without it, a stream of tokens carrying invented `kid` values is
-  one outbound request to keyring per inbound request, which is an amplifier anybody who can
-  reach this service can aim at a service already having a bad day.
-- **There is nothing to do here.** There is no local fallback, no cached-credential mode and
-  no flag that accepts unverified tokens. Fix keyring; this service recovers on its own, at
+- **A key rotation during an outage cannot be followed.** A token signed by a `kid` this
+  service does not hold provokes one fetch, and gets the 503 when that fails. For the next
+  `USER_API_JWKS_MIN_REFETCH_SECONDS` (60 by default) nothing fetches again: another unknown
+  `kid` is refused with a 401 while the held keys are fresh -- the same message a forgery
+  gets -- and with a 503 once they are stale. That is the rate limit working: without it, a
+  stream of tokens carrying invented `kid` values is one outbound request to keyring per
+  inbound request, which is an amplifier anybody who can reach this service can aim at a
+  service already having a bad day.
+- **There is nothing to do here.** Beyond the keys already held there is no local fallback,
+  and no flag that accepts unverified tokens. Fix keyring; this service recovers on its own, at
   the next fetch.
 
 ## Watching it
@@ -291,8 +296,9 @@ something is an oracle, whatever it is counting.
 ```
 
 It answers **200** when every check passed and **503** when any did not, with the same body
-shape either way. `degraded` today means one thing: keyring's signing keys could not be
-fetched, so no token can be verified and every authenticated request is failing. The process
+shape either way. `degraded` today means one thing: no usable keyring signing key is held,
+so no token can be verified and every authenticated request is failing. While cached keys
+are carrying the service through an outage the check stays `ok` and says so in `reason`. The process
 is up and the database is fine, which is exactly why reporting it as healthy would hide the
 one outage this service cannot work around. The `reason` is short fixed text and never the
 URL -- a URL can carry credentials in its userinfo, and this endpoint is open.
@@ -305,7 +311,9 @@ whose field name carries content anyway. If you add a field that must never be l
 its name to `_CONTENT_FIELDS` in `core/logging.py` rather than remembering not to log it.
 
 Lines worth alerting on: `sweep_failed` (erasure has stopped), `jwks_fetch_failed` and
-`jwks_document_malformed` (keyring, or something in front of it, is not serving a key set),
+`jwks_document_malformed` and `jwks_document_unusable` (keyring, or something in front of
+it, is not serving a key set),
+`jwks_serving_stale_keys` (keyring is unreachable and the cached keys have a day at most),
 `jwks_refetch_suppressed` in volume (somebody is aiming invented key ids at you), and
 `settings_rejected` (this service's grant in settings-api is wrong -- a 503 on every
 authenticated request that needs a cap, not an outage).
