@@ -43,5 +43,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- The first write after an erasure could fail with `cannot commit transaction - SQL
+  statements in progress`, depending on garbage-collector timing. The truncating checkpoint
+  handed its unread cursor back out of the database worker, which kept the checkpoint
+  running until something freed the cursor. It is closed on the worker now, and work that
+  returns a cursor is refused with a `TypeError` (rolled back inside a transaction), so the
+  pattern cannot come back as a flake.
 - `order=relevance` without `q` on `search_user` is a 422 that says relevance comes from
   passing a query. It used to reach the SQL layer and answer 500.
