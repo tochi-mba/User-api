@@ -131,7 +131,7 @@ class TestStartupDoesNotNeedKeyring:
 
 
 class TestTheContainer:
-    def test_it_wires_every_port(self, settings: Settings, clock: FakeClock) -> None:
+    async def test_it_wires_every_port(self, settings: Settings, clock: FakeClock) -> None:
         # Annotated with the PORTS rather than the adapters, which is what stops every
         # consumer of the container from depending on which adapter was wired.
         container = Container.build(settings, clock=clock)
@@ -147,8 +147,9 @@ class TestTheContainer:
         assert isinstance(checked_users, UserStore)
         assert isinstance(checked_settings, SettingsStore)
         assert isinstance(checked_preferences, DeploymentPreferences)
+        await container.aclose()
 
-    def test_uptime_is_measured_on_the_injected_clock(
+    async def test_uptime_is_measured_on_the_injected_clock(
         self, settings: Settings, clock: FakeClock
     ) -> None:
         container = Container.build(settings, clock=clock)
@@ -156,6 +157,7 @@ class TestTheContainer:
         clock.advance(90)
 
         assert container.uptime_seconds == 90
+        await container.aclose()
 
     async def test_closing_without_a_sweeper_started_is_not_an_error(
         self, settings: Settings, clock: FakeClock
@@ -183,12 +185,13 @@ class TestTheContainer:
 
 
 class TestPreferencesWiring:
-    def test_without_settings_api_everybody_gets_the_configuration(
+    async def test_without_settings_api_everybody_gets_the_configuration(
         self, settings: Settings, clock: FakeClock
     ) -> None:
         container = Container.build(settings, clock=clock)
 
         assert isinstance(container.preferences, DeploymentPreferences)
+        await container.aclose()
 
     async def test_a_configured_settings_api_is_read_per_person_and_closed_with_the_rest(
         self, tmp_path: Path, clock: FakeClock
@@ -203,12 +206,15 @@ class TestPreferencesWiring:
         assert isinstance(container.preferences, SettingsApiPreferences)
         await container.aclose()
 
-    def test_preferences_can_be_substituted(self, settings: Settings, clock: FakeClock) -> None:
+    async def test_preferences_can_be_substituted(
+        self, settings: Settings, clock: FakeClock
+    ) -> None:
         source = build_preference_source(settings, client=FakeSettingsClient())
 
         container = Container.build(settings, clock=clock, preferences=source)
 
         assert container.preferences is source
+        await container.aclose()
 
 
 class TestTheSweeper:
