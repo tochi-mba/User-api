@@ -218,10 +218,10 @@ ordering matters more than it looks: the other way round, entries whose grace pe
 expired while the service was stopped would sit there for a further whole hour after it
 came back, and somebody who deleted something yesterday and restarted this morning is
 entitled to have it gone this morning. Each pass asks which accounts hold a forgotten entry,
-reads each one's settings, skips the accounts on `tombstone`, and purges up to 500 entries per account -- bounded so one account
-with a large backlog cannot hold the single database thread for an unbounded stretch. The
-remainder waits for the next hour. The checkpoint runs once per sweep, not once per entry,
-which is what keeps a cheap step cheap.
+reads each one's settings, skips the accounts on `tombstone`, and purges up to 500 entries
+per account -- bounded so one account with a large backlog cannot hold the single database
+thread for an unbounded stretch. The remainder waits for the next hour. The checkpoint runs
+once per sweep, not once per entry, which is what keeps a cheap step cheap.
 
 Consequences worth knowing before somebody asks:
 

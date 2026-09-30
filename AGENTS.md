@@ -114,13 +114,13 @@ deliberately and say why in the commit message -- do not work around it.
    takes a `Clock` in its constructor, and `SystemClock` in `core/clock.py` is the only
    caller of `datetime.now` or `time.monotonic` in `src/`. This includes JWT expiry: the
    shared `keyring_client.TokenVerifier` switches PyJWT's `verify_exp` **and** `verify_iat`
-   off and re-checks expiry against the clock this service injects, because PyJWT refuses a token whose `iat` is in the future by the *wall*
-   clock, which would refuse every good token in a test that pinned the clock to next
-   Tuesday. What enforces it: ruff's `DTZ` rules refuse a naive `datetime.now()`,
-   `storage/times.py` raises on any attempt to store a naive datetime, and a suite that
-   never sleeps cannot test a grace period any other way. The one deliberate exception is
-   `time.perf_counter()` in `api/middleware.py`, which measures a request's duration for a
-   log field and decides nothing.
+   off and re-checks expiry against the clock this service injects, because PyJWT refuses
+   a token whose `iat` is in the future by the *wall* clock, which would refuse every good
+   token in a test that pinned the clock to next Tuesday. What enforces it: ruff's `DTZ`
+   rules refuse a naive `datetime.now()`, `storage/times.py` raises on any attempt to store
+   a naive datetime, and a suite that never sleeps cannot test a grace period any other way.
+   The one deliberate exception is `time.perf_counter()` in `api/middleware.py`, which
+   measures a request's duration for a log field and decides nothing.
 7. **No account id appears in any path, and no endpoint accepts one.** Every route is under
    `/v1/user`, and the account comes from the verified `sub` via `IdentityDep`. Every store
    method takes an `account_id` and it is not optional on any of them, so a cross-account
@@ -170,10 +170,11 @@ deliberately and say why in the commit message -- do not work around it.
 13. **Coverage is 100% branch coverage, and the exclusions are only non-executable
     lines** -- `if TYPE_CHECKING:`, bare `...` protocol bodies, `@overload`,
     `raise NotImplementedError`, the `__main__` guard. There is no `# pragma: no cover` in
-    `src/`, and `fail_under = 100` is what makes that stick. A line that is hard to cover is usually the code saying it is
-    shaped wrong: the URL exemption in `domain/secrets.py` was removed because the gate
-    showed no input could reach it, and `Database.count` indexes into its result rather than
-    testing for a missing row precisely so there is no branch nothing can take.
+    `src/`, and `fail_under = 100` is what makes that stick. A line that is hard to cover
+    is usually the code saying it is shaped wrong: the URL exemption in `domain/secrets.py`
+    was removed because the gate showed no input could reach it, and `Database.count`
+    indexes into its result rather than testing for a missing row precisely so there is no
+    branch nothing can take.
 14. **The FTS index is maintained by hand, and the table and the index must agree.**
     `entry_search` is a *plain* FTS5 table, not an external-content one, so every write path
     goes through `_index` or `_unindex` in `entries/sql_rows.py` and nothing in the

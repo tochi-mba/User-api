@@ -30,18 +30,19 @@ All four must pass before you commit.
 ## What this service will not do
 
 Read [ADR-0001](docs/adr/0001-data-not-instructions.md) and
-[ADR-0002](docs/adr/0002-no-secrets-here.md) before adding a field or a route. Two rules shape most reviews
-here:
+[ADR-0002](docs/adr/0002-no-secrets-here.md) before adding a field or a route. Two rules
+shape most reviews here:
 
 - **Stored content is data, never instructions.** Nothing read out of an entry may reach
   a place that treats it as a command.
 - **No secrets live here.** Credentials belong in keyring. A field that wants to hold one
   is a design error, not a validation problem.
 
-Scope comes from the token's audience ([ADR-0004](docs/adr/0004-scope-from-token-audience.md)), and no route takes an account id: whose
-entries these are comes from the `sub` of a verified token and from nowhere else. Every
-new route needs an isolation test that one account cannot reach another's, answering 404
-rather than 403.
+Scope comes from the token's audience
+([ADR-0004](docs/adr/0004-scope-from-token-audience.md)), and no route takes an account id:
+whose entries these are comes from the `sub` of a verified token and from nowhere else.
+Every new route needs an isolation test that one account cannot reach another's, answering
+404 rather than 403.
 
 ## Changing the database
 
