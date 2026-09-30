@@ -1,9 +1,11 @@
 """What a settings store promises. The SQL adapter is :mod:`user_api.users.sql_settings`.
 
-This port exists on day one for a reason that has nothing to do with today: **a separate
-settings-api is the next service in this family, and it becomes a second adapter.** When
-it does, nothing above this line changes -- not the service, not the routers, not a single
-test that is written against the port rather than against the table.
+This port was drawn on day one so that a separate settings service could become a second
+adapter without anything above it changing. settings-api has since landed and took a
+different route: the request-path caps are read from it through ``core/preferences.py``,
+and the three settings here stay in SQL because the erasure sweeper has no user token to
+present (ADR-0007). The port still keeps the service, the routers and the tests written
+against it independent of the table.
 
 That is worth one file now because the alternative is well understood: settings that begin
 as three columns on a user table and are still three columns on a user table when four
