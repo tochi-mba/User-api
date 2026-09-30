@@ -44,7 +44,7 @@ otherwise assume the opposite. Which scopes exist at all is deployment configura
 refuses a scope name containing a dot, because an audience is `{prefix}.{scope}` and a
 dotted scope would make one audience parse as another.
 
-Enforcement is one predicate. `_VISIBLE` in `entries/sql_store.py` binds exactly one
+Enforcement is one predicate. `_VISIBLE` in `entries/sql_rows.py` binds exactly one
 parameter, the caller's granted scope: an entry with no scope rows is visible to
 everybody, an entry with scope rows is visible only to a token granting one of them. It is
 applied to writes addressed by id as well as to reads, so a `user.home` token cannot

@@ -1,6 +1,13 @@
 # ADR-0009: Tokens verified locally against keyring's JWKS
 
-**Status:** accepted.
+**Status:** accepted. The decision stands; the mechanism moved. The fetching, caching and
+verification described below now live in the family's shared `keyring_client`
+(`JwksClient` and `TokenVerifier`), with the same rules, and `auth/` keeps only this
+service's scope rule and the translation into its own errors. Where this record names
+`auth/jwks.py` or `auth/tokens.py` for those rules, read `keyring_client`. One rule was
+added there: while keyring cannot be reached, keys already held are served for up to 24
+hours past the cache, so an outage is a 503 only once none is usable
+([operations](../operations.md#when-keyring-is-down)).
 
 ## Context
 
