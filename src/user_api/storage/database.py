@@ -205,7 +205,7 @@ class Database:
         an event loop to keep responsive, and the composition root is synchronous. Inside
         a request this would block the loop, which is what :meth:`run` is for.
         """
-        return self._executor.submit(work, self._connection).result()
+        return self._executor.submit(_returning_no_cursor, work, self._connection).result()
 
     async def run[T](self, work: Callable[[sqlite3.Connection], T]) -> T:
         """Run ``work`` on the worker thread, outside any transaction.
@@ -215,7 +215,9 @@ class Database:
         and belongs in :meth:`transact`.
         """
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, work, self._connection)
+        return await loop.run_in_executor(
+            self._executor, _returning_no_cursor, work, self._connection
+        )
 
     async def transact[T](self, work: Callable[[sqlite3.Connection], T]) -> T:
         """Run ``work`` as one ``BEGIN IMMEDIATE`` transaction.
@@ -307,6 +309,27 @@ class Database:
         self._executor.shutdown(wait=True)
 
 
+def _returning_no_cursor[T](
+    work: Callable[[sqlite3.Connection], T], connection: sqlite3.Connection
+) -> T:
+    """Run ``work``, refusing a cursor as its result.
+
+    A cursor that leaves the worker keeps its statement running until the cursor dies, and
+    when that happens is up to whoever ends up holding it. A running writer -- a checkpoint,
+    a ``RETURNING`` -- makes every ``COMMIT`` on this connection fail meanwhile. The cursor
+    is closed here, on the thread that owns it, and the mistake reported where it was made.
+    """
+    result = work(connection)
+    if isinstance(result, sqlite3.Cursor):
+        result.close()
+        msg = (
+            "work run on the database returned a cursor; return what it needs from it "
+            "(fetchone(), fetchall(), rowcount) instead"
+        )
+        raise TypeError(msg)
+    return result
+
+
 def _checkpoint_truncate(connection: sqlite3.Connection) -> None:
     """Checkpoint and truncate the write-ahead log, finishing the statement before returning."""
     connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").close()
@@ -318,7 +341,7 @@ def _in_transaction[T](
     """Run ``work`` between ``BEGIN IMMEDIATE`` and ``COMMIT``, rolling back on anything."""
     connection.execute("BEGIN IMMEDIATE")
     try:
-        result = work(connection)
+        result = _returning_no_cursor(work, connection)
     except BaseException:
         connection.rollback()
         raise

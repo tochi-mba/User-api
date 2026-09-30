@@ -76,7 +76,7 @@ def migrate(database: Database, *, now: datetime, directory: Path = MIGRATIONS_D
     Idempotent: running it against an up-to-date database applies nothing and returns
     zero, which is what makes it safe to call on every start.
     """
-    database.run_sync(lambda connection: connection.execute(SCHEMA_VERSION_DDL))
+    database.run_sync(lambda connection: connection.execute(SCHEMA_VERSION_DDL).close())
 
     applied = {
         row["version"]

@@ -171,6 +171,36 @@ class TestTransactions:
         assert [row["y"] for row in rows] == ["a", "b"]
 
 
+class TestNoCursorLeavesTheWorker:
+    """A cursor handed back out of the worker keeps its statement running until it dies.
+
+    When it dies is up to whoever ends up holding it -- in the checkpoint's case, a cycle
+    that only the garbage collector broke. A running writer makes every COMMIT on the
+    connection fail, so a cursor coming back is refused on the spot instead of becoming a
+    flake somewhere else later.
+    """
+
+    async def test_work_that_returns_a_cursor_is_refused(self, db: Database) -> None:
+        with pytest.raises(TypeError, match="returned a cursor"):
+            await db.run(lambda connection: connection.execute("PRAGMA wal_checkpoint"))
+
+        # Closed on the way out, so the refusal is all it costs.
+        await db.execute("INSERT INTO t (x, y) VALUES (1, 'a')")
+        assert await db.count("SELECT count(*) AS total FROM t") == 1
+
+    async def test_startup_work_that_returns_a_cursor_is_refused(self, db: Database) -> None:
+        with pytest.raises(TypeError, match="returned a cursor"):
+            db.run_sync(lambda connection: connection.execute("SELECT 1"))
+
+    async def test_a_transaction_that_returns_a_cursor_is_rolled_back(self, db: Database) -> None:
+        with pytest.raises(TypeError, match="returned a cursor"):
+            await db.transact(
+                lambda connection: connection.execute("INSERT INTO t (x, y) VALUES (1, 'a')")
+            )
+
+        assert await db.fetch_all("SELECT x FROM t") == []
+
+
 class TestForeignKeys:
     async def test_they_read_back_as_on(self, db: Database) -> None:
         # Read back rather than assumed: the pragma that switches them on is a silent
