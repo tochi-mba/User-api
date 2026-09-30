@@ -15,13 +15,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   [ADR-0008](https://github.com/tochi-mba/LUCY-assistant/blob/main/docs/adr/0008-python-3-12-floor.md):
   `weftai`, which the assistant hub depends on, requires 3.12 and uses PEP 695 type
   parameters that do not parse on 3.11. Generics here moved to PEP 695 syntax with it.
-- CI inherits `FAMILY_GITHUB_TOKEN`; image builds accept a BuildKit `github_token`
-  secret so tagged client packages can be fetched from private family repositories.
+- CI mints a short-lived family token through the family's OIDC token broker
+  (`id-token: write`) rather than holding a long-lived secret; image builds accept a
+  BuildKit `github_token` secret so tagged client packages can be fetched from private
+  family repositories.
   `make docker` uses the signed-in GitHub account without saving its token in an image.
 - **Breaking:** `GET /healthy` is liveness only -- the process is running, no I/O, and it
   never fails. The database and keyring checks moved to a new `GET /ready`
   (`check_readiness`), which answers 503 when keyring's keys cannot be read. Point container
   healthchecks at `/healthy` and load balancers at `/ready`.
+- Tokens are verified by the family's shared `keyring_client`, installed from its tagged
+  git source, in place of this service's own JWKS client and verifier. The rules are the
+  same; one is new: while keyring cannot be reached, keys already held are served for up to
+  24 hours past the one-hour cache, so a keyring outage no longer fails every request at
+  once. See [docs/operations.md](docs/operations.md#when-keyring-is-down).
 
 ### Added
 
@@ -33,3 +40,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `grace_days` and `log_values` stay on `SqlSettingsStore` because the erasure sweeper
   has no user token to present, and `log_values` is written by the public PUT and read by
   the event log on the same row.
+
+### Fixed
+
+- `order=relevance` without `q` on `search_user` is a 422 that says relevance comes from
+  passing a query. It used to reach the SQL layer and answer 500.
