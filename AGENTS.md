@@ -11,8 +11,8 @@ assistant is talking to: fields (named facts, one live one per key) and notes (e
 observations, lessons). An assistant loads the record at the start of a conversation and
 writes to it as it learns.
 
-It is the second service in this family. [keyring](../keyring-api) holds the accounts and
-the credentials; this service has none of its own. The only identity it ever learns is the
+[keyring](https://github.com/tochi-mba/Keyring-api) holds the family's accounts and
+credentials; this service has none of its own. The only identity it ever learns is the
 `sub` of a token keyring signed, verified locally against keyring's JWKS document. It never
 calls keyring at request time, and it cannot ask keyring anything about a person.
 
@@ -55,8 +55,10 @@ src/user_api/
   storage/   the SQLite connection on its one thread, the migrations, the schema
              snapshot, and how a datetime becomes a column. Knows rows and transactions,
              and nothing else.
-  auth/      JwksClient and TokenVerifier. The only package that imports `jwt` or
-             `httpx`, and the only one that decides who a request is for.
+  auth/      keyring_client's JwksClient, and a TokenVerifier that wraps the shared one
+             and adds this service's scope rule. The only package that imports
+             `keyring_client`, `jwt` or `httpx`, and the only one that decides who a
+             request is for.
   events/    EventLog port + SQL adapter. The person's own history of their own record.
   entries/   EntryStore port + SQL adapter. Fields, notes, their scopes, and the FTS
              index, which is maintained by hand.
@@ -76,7 +78,8 @@ boundary nobody can read.
 
 `auth/` sits below `events`/`entries`/`users` and above `storage` because it needs nothing
 from the database: a token is verified against a cached public key and nothing else. That
-position is also what lets one import-linter contract keep `jwt` and `httpx` inside it.
+position is also what lets one import-linter contract keep `keyring_client`, `jwt` and
+`httpx` inside it.
 
 ## Invariants
 
@@ -109,9 +112,9 @@ deliberately and say why in the commit message -- do not work around it.
    *could* write a query is a router that will eventually contain one.
 6. **Nothing reads the wall clock.** Every component that behaves differently over time
    takes a `Clock` in its constructor, and `SystemClock` in `core/clock.py` is the only
-   caller of `datetime.now` or `time.monotonic` in `src/`. This includes JWT expiry: PyJWT's
-   `verify_exp` **and** `verify_iat` are switched off and expiry is re-checked against the
-   injected clock, because PyJWT refuses a token whose `iat` is in the future by the *wall*
+   caller of `datetime.now` or `time.monotonic` in `src/`. This includes JWT expiry: the
+   shared `keyring_client.TokenVerifier` switches PyJWT's `verify_exp` **and** `verify_iat`
+   off and re-checks expiry against the clock this service injects, because PyJWT refuses a token whose `iat` is in the future by the *wall*
    clock, which would refuse every good token in a test that pinned the clock to next
    Tuesday. What enforces it: ruff's `DTZ` rules refuse a naive `datetime.now()`,
    `storage/times.py` raises on any attempt to store a naive datetime, and a suite that
@@ -131,7 +134,7 @@ deliberately and say why in the commit message -- do not work around it.
    `check_filterable` refuses a `?scope=` that is not the one the token holds -- refused
    rather than quietly empty, because a caller that gets an empty page caches the emptiness
    and stops asking. `check_writable` refuses writing *up*. Enforcement below the service is
-   `_VISIBLE` in `entries/sql_store.py`, one predicate binding one parameter, applied to
+   `_VISIBLE` in `entries/sql_rows.py`, one predicate binding one parameter, applied to
    writes addressed by id as well as to reads.
 9. **No entry content ever reaches a log record.** Two mechanisms, and both are needed: no
    call site passes content to a logger (log `entry_id`, `key`, `entry_type`, counts), and
@@ -160,20 +163,20 @@ deliberately and say why in the commit message -- do not work around it.
     rather than about the code. `PRAGMA secure_delete` is on and is not what makes this
     work -- see [ADR-0005](docs/adr/0005-erasure-is-a-setting.md).
 12. **Route `operation_id`s are public API.** They become MCP tool names, so renaming one
-    breaks every client with a tool bound to it. There are sixteen; every route sets one
+    breaks every client with a tool bound to it. There are seventeen; every route sets one
     explicitly, snake_case `verb_noun`, along with a `summary` and a real `description`
     written for a model rather than for a browser. Keep the OpenAPI contract test that pins
     the exact set in step when you add an endpoint.
 13. **Coverage is 100% branch coverage, and the exclusions are only non-executable
     lines** -- `if TYPE_CHECKING:`, bare `...` protocol bodies, `@overload`,
-    `raise NotImplementedError`, the `__main__` guard. There is no `# pragma: no cover` in `src/`, and `fail_under = 100`
-    is what makes that stick. A line that is hard to cover is usually the code saying it is
+    `raise NotImplementedError`, the `__main__` guard. There is no `# pragma: no cover` in
+    `src/`, and `fail_under = 100` is what makes that stick. A line that is hard to cover is usually the code saying it is
     shaped wrong: the URL exemption in `domain/secrets.py` was removed because the gate
     showed no input could reach it, and `Database.count` indexes into its result rather than
     testing for a missing row precisely so there is no branch nothing can take.
 14. **The FTS index is maintained by hand, and the table and the index must agree.**
     `entry_search` is a *plain* FTS5 table, not an external-content one, so every write path
-    goes through `_index` or `_unindex` in `entries/sql_store.py` and nothing in the
+    goes through `_index` or `_unindex` in `entries/sql_rows.py` and nothing in the
     database enforces that. `index_agrees` exists on the `EntryStore` port for exactly this,
     and a test class asserts the two still match after create, revise, forget, purge and
     cascade. The explicit helper is what creates this bug class; the test class is the price
@@ -199,7 +202,9 @@ Notes earned during this build:
   changes they fail to type-check, which is how you find out. There is no `unittest.mock` in
   this suite: the fake keyring is a real RSA key, a real JWKS document and a real transport,
   and its forged tokens are assembled by hand because PyJWT refuses to sign with a public
-  key -- a guard on the signing side that says nothing about the verifying side.
+  key -- a guard on the signing side that says nothing about the verifying side. The
+  pieces come from `keyring_client.testing`; `tests/fakes/keyring.py` gives them this
+  service's defaults.
 - **Never sleep.** Three rules here are arithmetic on a date -- a token's expiry, the JWKS
   cache's age, and how long a forgotten entry survives -- and the third is measured in days.
   Move the `FakeClock`.
