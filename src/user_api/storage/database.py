@@ -274,8 +274,13 @@ class Database:
         Not inside the purge transaction: a checkpoint cannot run with a transaction open,
         and doing it once per sweep rather than once per row is the difference between a
         cheap step and a pathological one.
+
+        The cursor is closed on the worker, not handed back. The PRAGMA answers with a row,
+        so an unread cursor leaves the checkpoint running -- and a running checkpoint is a
+        writer, which makes every ``COMMIT`` on this connection fail with "SQL statements
+        in progress" for as long as anything holds the cursor.
         """
-        await self.run(lambda connection: connection.execute("PRAGMA wal_checkpoint(TRUNCATE)"))
+        await self.run(_checkpoint_truncate)
 
     def close(self) -> None:
         """Close the connection and stop the worker thread, without an event loop.
@@ -300,6 +305,11 @@ class Database:
         # The queue is empty by now -- the close above was the last thing on it -- so this
         # returns immediately rather than blocking the event loop.
         self._executor.shutdown(wait=True)
+
+
+def _checkpoint_truncate(connection: sqlite3.Connection) -> None:
+    """Checkpoint and truncate the write-ahead log, finishing the statement before returning."""
+    connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").close()
 
 
 def _in_transaction[T](

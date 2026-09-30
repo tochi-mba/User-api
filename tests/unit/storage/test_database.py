@@ -34,7 +34,7 @@ from user_api.storage.database import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
     from pathlib import Path
 
 SENTINEL = "Dr Okonkwo at the Meadow Clinic"
@@ -343,6 +343,34 @@ class TestCheckpointing:
         row = await db.fetch_one("SELECT y FROM t WHERE x = 1")
         assert row is not None
         assert row["y"] == "kept"
+
+    async def test_a_write_commits_after_a_checkpoint_whatever_still_holds_its_result(
+        self, db: Database, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The flake in TestDeletingTheRecord: "cannot commit transaction - SQL statements
+        in progress".
+
+        The checkpoint handed its cursor back out of the worker unread. The PRAGMA answers
+        with one row, so the statement stayed running, and a running checkpoint counts as a
+        writer: every COMMIT on the connection failed until that cursor was freed. Reference
+        counting usually freed it at once; when the futures carrying it back formed a cycle,
+        only the cycle collector did, and the next write failed if it came first. Keeping
+        every result alive, as that cycle did, makes the failure happen every time.
+        """
+        held: list[object] = []
+        run = db.run
+
+        async def keeping[T](work: Callable[[sqlite3.Connection], T]) -> T:
+            result = await run(work)
+            held.append(result)
+            return result
+
+        monkeypatch.setattr(db, "run", keeping)
+
+        await db.checkpoint_truncate()
+        await db.execute("INSERT INTO t (x, y) VALUES (1, 'after')")
+
+        assert await db.count("SELECT count(*) AS total FROM t") == 1
 
 
 class TestClosing:
