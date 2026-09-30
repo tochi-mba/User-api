@@ -11,29 +11,29 @@ import-linter contracts in `pyproject.toml` rather than by convention.
                     │            identity dependency   │
                     └───────────────┬──────────────────┘
                     ┌───────────────▼──────────────────┐
-                    │  users/    UserService, the       │
-                    │            record row, settings,  │
-                    │            the erasure path       │
+                    │  users/    UserService, the      │
+                    │            record row, settings, │
+                    │            the erasure path      │
                     └───────────────┬──────────────────┘
                     ┌───────────────▼──────────────────┐
-                    │  entries/  EntryStore + SQL       │
-                    │            adapter, the FTS index │
+                    │  entries/  EntryStore + SQL      │
+                    │            adapter, the FTS index│
                     └───────────────┬──────────────────┘
                     ┌───────────────▼──────────────────┐
-                    │  events/   EventLog + SQL adapter │
+                    │  events/   EventLog + SQL adapter│
                     └───────────────┬──────────────────┘
                     ┌───────────────▼──────────────────┐
-                    │  auth/     JwksClient,            │
-                    │            TokenVerifier          │
-                    │            (the only jwt/httpx)   │
+                    │  auth/     keyring_client's      │
+                    │            JwksClient, a scope-  │
+                    │            aware TokenVerifier   │
                     └───────────────┬──────────────────┘
                     ┌───────────────▼──────────────────┐
-                    │  storage/  one connection, one    │
-                    │            thread, migrations     │
+                    │  storage/  one connection, one   │
+                    │            thread, migrations    │
                     └───────────────┬──────────────────┘
                     ┌───────────────▼──────────────────┐
-                    │  domain/   pure types & rules     │
-                    │            (imports nothing)      │
+                    │  domain/   pure types & rules    │
+                    │            (imports nothing)     │
                     └──────────────────────────────────┘
 
   core/  config · clock · logging · request context · version · preferences · composition root
@@ -49,7 +49,10 @@ layer calls, none of them knows what a row or a status code is.
 
 `auth/` sits above `storage/` and below the three store packages because it needs nothing
 from the database. A token is checked against a cached public key and nothing else, which
-is what makes it possible to keep `jwt` and `httpx` inside one package.
+is what makes it possible to keep `keyring_client`, and the `jwt` and `httpx` beneath it,
+inside one package. The token rules themselves live in `keyring_client`, shared by the
+family; `auth/` adds only this service's rule that the audience is the scope, and turns the
+library's errors into this service's domain errors.
 
 ## The five contracts, and what each prevents
 
@@ -61,7 +64,7 @@ reason the diagram is still true.
 | **Domain is independent** | `user_api.domain` importing any other package. | A rule that quietly needs a store. The moment `domain/scopes.py` can see a row, "what does this token grant" stops being answerable by reading one function. |
 | **Layers point inward** | An import from a lower layer to a higher one. | `entries/` learning what an erasure mode is. It reports *who* has forgotten something; the sweeper, which holds the settings, decides what that means. |
 | **SQL stays behind the stores** | `api`, `auth` and `domain` importing `user_api.storage` or `sqlite3`, indirectly included. | A router that *could* write a query, which is a router that will eventually contain one -- and a query written outside a store is a query that forgot `account_id`. |
-| **Keyring is spoken to from one package only** | Every package except `auth` importing `jwt` or `httpx`, indirectly included. `core.config` is left off so it can validate the settings-api token with `keyring_client.check_service_token`. | "How do we decide who this is" having more than one place to look. It is also why `JwksClient.key_for` returns `Any` rather than `jwt.PyJWK`: a signature naming a library's type is how the library leaks out of the package meant to hold it. |
+| **Keyring is spoken to from one package only** | Every package except `auth` importing `jwt`, `httpx` or `keyring_client`, indirectly included. `core.config` is left off so it can validate the settings-api token with `keyring_client.check_service_token`. | "How do we decide who this is" having more than one place to look. It is also why `keyring_client`'s `JwksClient.key_for` returns `Any` rather than `jwt.PyJWK`: a signature naming a library's type is how the library leaks out of the package meant to hold it. |
 | **Talking to settings-api stays behind the preferences module** | Every package except `core.preferences` importing `settings_client`. | A call site re-implementing caching, revalidation, single-flight and outage behaviour, slightly wrong, and presenting a user token without the one module that knows how to degrade. |
 
 The layers contract is declared `exhaustive = false`, so `core/` sits outside it
@@ -124,17 +127,21 @@ GET /v1/user/entries?q=lisbon&scope=home      Authorization: Bearer <token>
     → bind a request id (yours, capped at 64 chars, or a fresh one)
     → every log record from here on carries it
 
-  get_identity (api/dependencies.py)
-    → read `kid` from the token's UNVERIFIED header -- it chooses the key
-    → JwksClient.key_for(kid): cached? fresh? else one fetch, rate-limited per kid
-        · fetch failed        → KeyringUnreachableError → 503 + Retry-After
-        · fetched, no such kid → AuthenticationError    → 401
-    → read `aud` from the UNVERIFIED claims, because PyJWT checks only an audience
-      it has been told; nothing is decided from this reading
-    → jwt.decode(..., algorithms=["RS256"], audience=<that>, issuer=<pinned>,
-                 require=exp/iat/iss/sub/aud, verify_exp=False, verify_iat=False)
-    → expiry re-checked against the INJECTED clock
+  get_identity (api/dependencies.py) → auth.TokenVerifier.verify (auth/tokens.py)
+    → keyring_client.TokenVerifier.verify, the family's shared rules:
+      → read `kid` from the token's UNVERIFIED header -- it chooses the key
+      → JwksClient.key_for(kid): cached? fresh? else one fetch; a kid the current keys
+        lack provokes at most one fetch per USER_API_JWKS_MIN_REFETCH_SECONDS, across all kids
+          · fetch failed, nothing cached → KeyringUnreachableError → 503 + Retry-After
+          · fetched, no such kid         → AuthenticationError    → 401
+      → read `aud` from the UNVERIFIED claims, because PyJWT checks only an audience
+        it has been told; nothing is decided from this reading
+      → jwt.decode(..., algorithms=["RS256"], audience=<that>, issuer=<pinned>,
+                   require=exp/iat/iss/sub/aud, verify_exp=False, verify_iat=False)
+      → expiry re-checked against the INJECTED clock
+      → the audience must be `user` or `user.<something>` (AudienceFamily)
     → granted_scope(aud) → Identity(account_id=sub, audience=aud, granted_scope=...)
+      · a scope this deployment does not allow → 401, the same as every refusal
     → set_account_id(sub): every later log record says whose request this was
 
   search_user (api/routers/entries.py)
