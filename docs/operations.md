@@ -86,6 +86,17 @@ answer every authenticated request with a 503 until keyring comes back. The same
 applies to settings-api: the client is constructed, not contacted, and an empty URL
 keeps today's behaviour exactly.
 
+`make docker` builds `user-api:local`. The image listens on `0.0.0.0:8002`, keeps the
+database at `/var/lib/user-api/user.db` in a volume created 0700, and deliberately sets
+neither the keyring JWKS URL nor the issuer: they name the deployment's keyring, so pass
+them when the container starts.
+
+```bash
+docker run -d -p 127.0.0.1:8002:8002 -v user-data:/var/lib/user-api \
+  -e USER_API_KEYRING_JWKS_URL=https://keyring.example/.well-known/jwks.json \
+  -e USER_API_KEYRING_ISSUER=https://keyring.example user-api:local
+```
+
 The service binds `127.0.0.1` by default and should stay there. It belongs behind a
 TLS-terminating reverse proxy: every token it accepts is a bearer token, and over plain HTTP
 anybody on the path has them.
