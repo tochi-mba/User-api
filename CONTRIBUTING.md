@@ -7,9 +7,12 @@ is normative. This file is the short version.
 
 ```bash
 make install             # venv and every dependency, from the lockfile
-uv run pre-commit install
 make check               # confirm a clean checkout is green before you change anything
 ```
+
+Optionally, install the git hooks in `.pre-commit-config.yaml` -- a fast subset of
+`make check` on staged files. pre-commit is not one of this project's dependencies, so
+install it as a tool first: `uv tool install pre-commit`, then `pre-commit install`.
 
 The suite needs no credentials, no network and no running keyring: tokens are signed by a
 real key in `tests/fakes/`, and keyring's JWKS document is served in-process.
@@ -26,7 +29,8 @@ All four must pass before you commit.
 
 ## What this service will not do
 
-Read ADR-0001 and ADR-0002 before adding a field or a route. Two rules shape most reviews
+Read [ADR-0001](docs/adr/0001-data-not-instructions.md) and
+[ADR-0002](docs/adr/0002-no-secrets-here.md) before adding a field or a route. Two rules shape most reviews
 here:
 
 - **Stored content is data, never instructions.** Nothing read out of an entry may reach
@@ -34,7 +38,7 @@ here:
 - **No secrets live here.** Credentials belong in keyring. A field that wants to hold one
   is a design error, not a validation problem.
 
-Scope comes from the token's audience (ADR-0004), and no route takes an account id: whose
+Scope comes from the token's audience ([ADR-0004](docs/adr/0004-scope-from-token-audience.md)), and no route takes an account id: whose
 entries these are comes from the `sub` of a verified token and from nowhere else. Every
 new route needs an isolation test that one account cannot reach another's, answering 404
 rather than 403.
