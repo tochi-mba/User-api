@@ -1,6 +1,11 @@
 # ADR-0007: Settings behind a port on day one
 
-**Status:** accepted.
+**Status:** accepted. settings-api has since landed, and it did not become a second adapter
+behind this port. The two request-path caps (`max_pinned`, `search_default_limit`) are read
+from it through `core/preferences.py`; the three settings this port holds stay in
+`SqlSettingsStore`, because the erasure sweeper has no user token to present.
+[docs/architecture.md](../architecture.md) ("Why erasure did not move") has the reasoning.
+The expectation below is kept as it was written.
 
 ## Context
 
@@ -37,8 +42,8 @@ can resurrect an account `DELETE /v1/user` has just erased.
 
 The choice of adapter is made in one place. `core/container.py` constructs
 `SqlSettingsStore` and hands it to `UserService`, which holds the port type; the routers
-hold the service. The composition root says what that buys: "When the settings-api lands,
-one line in this file changes and nothing above the port notices."
+hold the service. The composition root said, when this was written, what that buys: "When
+the settings-api lands, one line in this file changes and nothing above the port notices."
 
 ## Why now rather than when the second adapter exists
 
