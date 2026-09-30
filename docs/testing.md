@@ -72,15 +72,20 @@ pass for the wrong reason.
 Most of the suite is ordinary. These are the parts worth reading before changing anything
 near them.
 
-**`tests/unit/auth/`** -- the security boundary. `TestUnknownKidRateLimit` is the one to
-read first: a key id is read from a token's header *before anything has been verified*, so
-it is the one value an unauthenticated caller puts in front of the verifier, and without a
-floor between fetches a stream of invented ids is one outbound request to keyring per
-inbound request. `TestOneRefusalForEverything` collects nineteen ways a token can be
-rejected and asserts the set of error messages has exactly one element -- every distinction
-a caller can tell apart is an oracle. Two of those tokens are assembled by hand because
-PyJWT refuses to *mint* them; that refusal protects a signer and does nothing for a
-verifier.
+**`tests/unit/auth/`** -- the security boundary as this service draws it.
+`TestOneRefusalForEverything` puts eleven kinds of bad token through the verifier -- the
+shared library's refusals and this service's own scope rule alike -- and asserts the set of
+error messages has exactly one element: every distinction a caller can tell apart is an
+oracle. Two of those tokens, the HS256 and the unsigned one, are assembled by hand in
+`keyring_client.testing` because PyJWT refuses to *mint* them; that refusal protects a
+signer and does nothing for a verifier.
+
+The rate limit on unknown key ids is not tested here any more, because it is not
+implemented here: it lives in the shared `keyring_client.JwksClient` and is tested in the
+keyring repository (`TestUnknownKeyIds` in `tests/unit/client/test_jwks.py`). It matters
+because a key id is read from a token's header *before anything has been verified*, and
+without a floor between fetches a stream of invented ids is one outbound request to keyring
+per inbound request.
 
 **`tests/integration/test_isolation.py`** -- one test per verb. What each asserts is not
 that a check exists but that a caller who tries gets *exactly* what they would get for data
@@ -88,10 +93,11 @@ that never existed. `TestSearchIsolation` has its own class because the FTS inde
 across every account: the `MATCH` alone finds other people's rows, and the account filter
 lives in the outer `WHERE` of the join.
 
-**Erasure, in `tests/unit/users/test_erasure.py` and `tests/integration/test_erasure.py`**  -- 
-one test reads the raw bytes of the database file *and its `-wal`* and asserts a sentinel is
-in neither. It cannot be replaced by anything else here, because it is about the file rather
-than the code: `DELETE` takes the row out of the b-tree and leaves what it held in the write-ahead log. See [ADR-0005](adr/0005-erasure-is-a-setting.md).
+**Erasure, in `tests/unit/users/test_erasure.py` and `tests/integration/test_erasure.py`**
+-- one test reads the raw bytes of the database file *and its `-wal`* and asserts a sentinel
+is in neither. It cannot be replaced by anything else here, because it is about the file
+rather than the code: `DELETE` takes the row out of the b-tree and leaves what it held in
+the write-ahead log. See [ADR-0005](adr/0005-erasure-is-a-setting.md).
 
 **The hostile search table** -- the same list of punctuation in
 `tests/unit/domain/test_search.py` and `tests/integration/test_retrieval.py`. Eight of the
@@ -104,7 +110,7 @@ the assertion is simply that the status is 200 or 422 and never 500.
 so "the index and the table disagree" is a state the schema permits and only a test
 forbids.
 
-**`tests/integration/test_no_content_in_logs.py`** -- a sentinel driven through six request
+**`tests/integration/test_no_content_in_logs.py`** -- a sentinel driven through eight request
 paths, captured through a processor rather than read from stdout so it is seen *after* the
 redactor and before anything renders. The failure paths matter more than the success path:
 an exception handler that logs its whole context, and a validation error that echoes its
