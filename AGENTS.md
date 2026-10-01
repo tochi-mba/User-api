@@ -133,7 +133,10 @@ deliberately and say why in the commit message -- do not work around it.
    grant, and it is called from the verified claims in `auth/tokens.py` and nowhere else.
    `check_filterable` refuses a `?scope=` that is not the one the token holds -- refused
    rather than quietly empty, because a caller that gets an empty page caches the emptiness
-   and stops asking. `check_writable` refuses writing *up*. Enforcement below the service is
+   and stops asking. `check_writable` refuses writing *up*. A write that omits `scopes`
+   takes the person's `user.default_write_scope` through `default_write_scopes`, which
+   holds it to the same rule: a default can narrow where an entry lands and is refused,
+   never widened, when the token does not grant it. Enforcement below the service is
    `_VISIBLE` in `entries/sql_rows.py`, one predicate binding one parameter, applied to
    writes addressed by id as well as to reads.
 9. **No entry content ever reaches a log record.** Two mechanisms, and both are needed: no

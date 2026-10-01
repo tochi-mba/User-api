@@ -51,9 +51,16 @@ minted. The grant there needs `audience_prefix` equal to `USER_API_AUDIENCE_PREF
 `search_default_limit`; they cannot raise them above this deployment, and
 `USER_API_SEARCH_MAX_LIMIT` remains the hard cap on a named page size.
 
-If settings-api has never answered, those two fall back to the configuration. If it
-refuses this service (401/403), the request is **503** with a fixed body that names
-neither the grant nor the URL.
+A write that omits `scopes` also reads `default_write_scope`: the entry lands in that
+compartment instead of unscoped. It is held to the token like a named scope, so a token
+that does not grant it -- or a default this deployment's `USER_API_ALLOWED_SCOPES` does
+not list -- gets a 403 naming the setting. If writes start failing that way, the person's
+choice and the assistant's token disagree; the fix is a token for that scope or a
+different choice, never a wider default.
+
+If settings-api has never answered, all three fall back to the configuration (for
+`default_write_scope`, unscoped). If it refuses this service (401/403), the request is
+**503** with a fixed body that names neither the grant nor the URL.
 
 `erasure_mode`, `grace_days` and `log_values` stay on this service's `SqlSettingsStore`.
 The erasure sweeper has no user token to present to settings-api, and `log_values` is

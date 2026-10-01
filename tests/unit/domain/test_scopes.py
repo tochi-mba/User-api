@@ -17,7 +17,13 @@ from __future__ import annotations
 import pytest
 
 from user_api.domain.errors import InvalidScopeError, ScopeNotGrantedError
-from user_api.domain.scopes import check_filterable, check_known, check_writable, granted_scope
+from user_api.domain.scopes import (
+    check_filterable,
+    check_known,
+    check_writable,
+    default_write_scopes,
+    granted_scope,
+)
 
 PREFIX = "user"
 ALLOWED = ("home", "work", "health")
@@ -122,6 +128,42 @@ class TestWriting:
             check_writable(("health", "health"), granted="home")
 
         assert str(caught.value).count("health") == 1
+
+
+class TestTheDefaultCompartment:
+    @pytest.mark.parametrize("granted", [None, *ALLOWED])
+    def test_no_default_lands_a_write_unscoped_exactly_as_before(self, granted: str | None) -> None:
+        assert default_write_scopes(None, granted=granted) == ()
+
+    @pytest.mark.parametrize("scope", ALLOWED)
+    def test_a_default_the_token_grants_is_where_the_write_lands(self, scope: str) -> None:
+        assert default_write_scopes(scope, granted=scope) == (scope,)
+
+    def test_a_default_the_token_does_not_grant_refuses_the_write(self) -> None:
+        """The bug, named: a default that widened, or one that was quietly dropped.
+
+        A person who set ``health`` asked for their new entries to land somewhere narrow.
+        A ``user.home`` token cannot write there, and the two wrong answers are both
+        tempting: writing ``health`` anyway (write-up, on the strength of the person's
+        setting rather than the token) or writing unscoped (the widest compartment there
+        is, the opposite of what they asked). The write fails instead.
+        """
+        with pytest.raises(ScopeNotGrantedError) as caught:
+            default_write_scopes("health", granted="home")
+
+        assert "this token grants home" in str(caught.value)
+        assert "health" in str(caught.value)
+        assert "default_write_scope" in str(caught.value)
+
+    def test_an_unscoped_token_cannot_write_into_a_default_compartment(self) -> None:
+        with pytest.raises(ScopeNotGrantedError, match="grants none"):
+            default_write_scopes("health", granted=None)
+
+    def test_a_default_this_deployment_does_not_have_refuses_rather_than_widening(self) -> None:
+        # No token can grant a scope the deployment does not configure, so every write
+        # that names no scopes fails -- loudly, rather than falling back to unscoped.
+        with pytest.raises(ScopeNotGrantedError):
+            default_write_scopes("dinosaurs", granted="home")
 
 
 class TestFiltering:

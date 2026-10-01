@@ -93,6 +93,37 @@ def check_writable(scopes: tuple[str, ...], *, granted: str | None) -> None:
         raise ScopeNotGrantedError(msg)
 
 
+def default_write_scopes(default: str | None, *, granted: str | None) -> tuple[str, ...]:
+    """Where a write that names no scopes lands: the person's default compartment, if any.
+
+    ``default`` is the person's ``user.default_write_scope``. ``None`` is unscoped, which is
+    what a write naming no scopes always meant, so nobody who has not chosen one notices
+    this function exists.
+
+    A default can only ever *narrow*. It is held to the same rule as a scope the writer
+    named -- a token may write its own scope and no other -- so a default the token does
+    not grant refuses the write. The two alternatives are both wrong: writing the default
+    anyway would be write-up on the strength of a setting rather than a token, and writing
+    unscoped would put the entry in the widest compartment there is, the opposite of what
+    the person asked for. A default this deployment does not configure lands here too: no
+    token can grant it, so every such write is refused rather than quietly widened.
+
+    Raises:
+        ScopeNotGrantedError: naming the token's scope, the default, and the setting, so a
+            caller that sent no scopes is not left wondering where one came from.
+    """
+    if default is None:
+        return ()
+    if default != granted:
+        held = granted or "none"
+        msg = (
+            f"this token grants {held} and cannot write entries scoped to {default}, "
+            "where this person's new entries land by default (user.default_write_scope)"
+        )
+        raise ScopeNotGrantedError(msg)
+    return (default,)
+
+
 def check_filterable(scope: str, *, granted: str | None) -> None:
     """Refuse a ``?scope=`` filter that would reach past the token.
 
