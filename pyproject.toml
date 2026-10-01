@@ -5,7 +5,7 @@ description = "Structured, scoped, erasable knowledge about the person an assist
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-authors = [{ name = "tochi-mba" }]
+authors = [{ name = "REX Technologies" }]
 keywords = ["fastapi", "memory", "mcp", "personal-data", "privacy"]
 classifiers = [
     "Private :: Do Not Upload",
@@ -148,6 +148,8 @@ convention = "google"
 [tool.mypy]
 python_version = "3.12"
 files = ["src", "tests"]
+# `scripts` is on the path so the tests can import the site checker they exercise.
+mypy_path = "scripts"
 strict = true
 warn_unreachable = true
 warn_unused_ignores = true

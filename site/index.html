@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="User-api keeps structured data about the person an assistant is talking to, with provenance on every entry, credentials refused, and erasure that reaches the bytes on disk. A REX Technologies product.">
+<meta name="robots" content="index,follow">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#080A09">
+<meta property="og:title" content="User-api — what an assistant knows about the person it serves — REX Technologies">
+<meta property="og:description" content="User-api keeps structured data about the person an assistant is talking to, with provenance on every entry, credentials refused, and erasure that reaches the bytes on disk. A REX Technologies product.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://tochi-mba.github.io/User-api/">
+<meta name="twitter:card" content="summary">
+<link rel="canonical" href="https://tochi-mba.github.io/User-api/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script>document.documentElement.classList.replace("no-js","js");</script>
+<noscript><style>@media(max-width:760px){.site-nav{display:flex!important;position:static!important;flex-direction:column}.menu-button{display:none!important}}</style></noscript>
+<title>User-api — what an assistant knows about the person it serves — REX Technologies</title>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="ambient ambient-one" aria-hidden="true"></div>
+<div class="ambient ambient-two" aria-hidden="true"></div>
+
+<header class="site-header">
+  <div class="container nav-wrap">
+    <a class="brand" href="#top" aria-label="User-api, by REX Technologies">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><circle cx="16" cy="11" r="4.5"/><path d="M7 26c1.5-5 5-7 9-7s7.5 2 9 7"/></svg></span>
+      <span class="brand-lockup"><span class="brand-company">REX Technologies</span><span class="brand-name">User-api</span></span>
+    </a>
+    <button class="menu-button" type="button" aria-expanded="false" aria-controls="site-nav"><span class="sr-only">Toggle navigation</span><span></span><span></span></button>
+    <nav id="site-nav" class="site-nav" aria-label="Primary navigation">
+      <a href="#how">How it works</a>
+      <a href="#api">The API</a>
+      <a href="#install">Run it</a>
+      <a href="#limits">What it will not do</a>
+      <a href="#docs">Docs</a>
+      <a class="nav-github" href="https://github.com/tochi-mba/User-api">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero container" id="top">
+    <div class="hero-copy">
+      <p class="eyebrow signal">The person&#x27;s record</p>
+      <h1>Who the assistant is talking to, kept as <span>claims</span>, never orders.</h1>
+      <p class="hero-lede">What they are called, their timezone, who is in their household, what they are allergic to, what they are working on. An assistant loads the record at the start of a conversation and writes to it as it learns.</p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="#install">Run it on your machine</a>
+        <a class="button button-secondary" href="https://github.com/tochi-mba/User-api">Source on GitHub</a>
+      </div>
+      <div class="hero-meta">
+        <span>Python 3.12+</span>
+        <span>Serves on :8002</span>
+        <span>Tokens from keyring</span>
+        <span>MIT licensed</span>
+      </div>
+    </div>
+    <pre class="console" aria-label="The routes User-api is built around"><code><span class="k">GET</span>    /v1/user                       -&gt; counts, and every pinned entry your token may see
+<span class="k">GET</span>    /v1/user/schema                -&gt; which field keys exist, and what each one means
+<span class="k">PUT</span>    /v1/user/fields/{key}          -&gt; one named fact: preferred_name, timezone, ...
+<span class="k">POST</span>   /v1/user/notes                 -&gt; something that happened, was noticed, or was learned
+<span class="k">GET</span>    /v1/user/entries?q=lisbon      -&gt; full-text and filtered search across both
+<span class="k">POST</span>   /v1/user/entries/{id}/confirm  -&gt; a human says this is still true
+<span class="s">DELETE</span> /v1/user/entries/{id}          -&gt; forget one thing
+<span class="s">DELETE</span> /v1/user                       -&gt; forget all of it, for good</code></pre>
+  </section>
+
+  <section class="trust-strip">
+    <div class="container trust-grid">
+      <div><strong>No request names a person</strong><span>The account comes from the token; it appears in no URL.</span></div>
+      <div><strong>Provenance on everything</strong><span>Who wrote it, where it came from, when a human last confirmed it.</span></div>
+      <div><strong>Credentials are refused</strong><span>Anything shaped like a key or a token is a 422 naming keyring.</span></div>
+      <div><strong>Erasure reaches the bytes</strong><span>A purge is a delete plus a truncating checkpoint.</span></div>
+    </div>
+  </section>
+
+  <section class="section container" id="how">
+    <div class="section-heading">
+      <p class="eyebrow signal">How it works</p>
+      <h2>The subject is a person, and that drives the design.</h2>
+      <p>It has no accounts of its own. The only identity it ever learns is the subject of a token <a href="https://tochi-mba.github.io/Keyring-api/">keyring</a> signed, verified locally against keyring's published keys.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="step-number">01</span>
+        <h3>Fields and notes</h3>
+        <p>A field is one named fact with a meaning the schema states. A note is something that happened, was noticed, or was learned. Both are searchable, and both can be pinned.</p>
+      </div>
+      <div class="step">
+        <span class="step-number">02</span>
+        <h3>Scope comes from the token</h3>
+        <p>A token minted for <code>user</code> sees unscoped entries; one minted for <code>user.&lt;scope&gt;</code> sees those plus that compartment. A query parameter can narrow, never widen.</p>
+      </div>
+      <div class="step">
+        <span class="step-number">03</span>
+        <h3>A record is data</h3>
+        <p>An assistant that reads pages and email writes here from untrusted text, so every entry carries its provenance and is meant to be rendered as “your notes say”.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section container" id="api">
+    <div class="section-heading">
+      <p class="eyebrow signal">The API</p>
+      <h2>No account id in any path, and no parameter that names a subject.</h2>
+      <p>Every route except <code>GET /healthy</code> and <code>GET /ready</code> needs a bearer token minted by keyring. The reference is <a href="https://github.com/tochi-mba/User-api/blob/main/docs/api.md">docs/api.md</a>.</p>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card"><span class="meta">GET /v1/user</span><h3>The record</h3><p>Counts, and every pinned entry the token may see. <code>GET /v1/user/schema</code> says which field keys exist.</p></div>
+      <div class="feature-card"><span class="meta">PUT /v1/user/fields/{key}</span><h3>Fields</h3><p>One named fact, typed and validated against the schema.</p></div>
+      <div class="feature-card"><span class="meta">POST /v1/user/notes</span><h3>Notes</h3><p>Something that happened, was noticed, or was learned, with where it came from.</p></div>
+      <div class="feature-card"><span class="meta">GET /v1/user/entries</span><h3>Search</h3><p>Full-text and filtered search across fields and notes.</p></div>
+      <div class="feature-card"><span class="meta">POST …/entries/{id}/confirm</span><h3>Confirming</h3><p>A human says an entry is still true, which is recorded with it.</p></div>
+      <div class="feature-card"><span class="meta">GET /v1/user/export</span><h3>Export and events</h3><p>Everything held about the person, and the change log, on request.</p></div>
+    </div>
+  </section>
+
+  <section class="section container" id="install">
+    <div class="section-heading">
+      <p class="eyebrow signal">Run it</p>
+      <h2>Three commands; every setting has a working default.</h2>
+      <p>You need Python 3.12 or newer, <a href="https://docs.astral.sh/uv/">uv</a>, and a keyring to mint tokens (its own <code>make run</code> serves where the defaults expect it).</p>
+    </div>
+    <ol class="install-steps">
+      <li>Install.
+        <div class="command-row"><code>make install</code><button class="copy-button" type="button" data-copy="make install">Copy</button></div>
+      </li>
+      <li>Take the defaults.
+        <div class="command-row"><code>cp .env.example .env</code><button class="copy-button" type="button" data-copy="cp .env.example .env">Copy</button></div>
+      </li>
+      <li>Serve it; the interactive docs are at <code>/docs</code>.
+        <div class="command-row"><code>make run</code><button class="copy-button" type="button" data-copy="make run">Copy</button></div>
+      </li>
+    </ol>
+    <p class="install-note">A <code>USER_API_</code>-prefixed environment variable that matches no setting is a startup error, not a warning. Point it at a settings-api and each person can lower their own <code>max_pinned</code> and <code>search_default_limit</code>. <code>make check</code> is the gate: format, lint, strict types, layering contracts, and the suite at 100% branch coverage.</p>
+    <p id="copy-status" class="sr-only" aria-live="polite"></p>
+  </section>
+
+  <section class="section container" id="limits">
+    <div class="section-heading">
+      <p class="eyebrow signal">What it will not do</p>
+      <h2>The terms of the arrangement, stated rather than hidden.</h2>
+    </div>
+    <div class="faq">
+      <details open>
+        <summary>Can one person&#x27;s token read another person&#x27;s record?</summary>
+        <p>No. Every store method takes an account id that is not optional, so a cross-account read is not forbidden, it is inexpressible. Another account's entry reads back exactly like one that never existed.</p>
+      </details>
+      <details>
+        <summary>Can a signed token be revoked?</summary>
+        <p>No. Logging out of keyring ends a session there and nothing here; an already-minted token works until it expires, which is about fifteen minutes.</p>
+      </details>
+      <details>
+        <summary>What happens to a secret pasted into a note?</summary>
+        <p>It is refused with a 422 naming keyring as the right home. This store is plaintext on disk and indexed for search; a secret in it would be a secret in a search index.</p>
+      </details>
+      <details>
+        <summary>What does “forget that” do?</summary>
+        <p>What <code>DELETE</code> on one entry means is the person's own setting: grace (the default), immediate, or tombstone. <code>DELETE /v1/user</code> forgets all of it, for good.</p>
+      </details>
+    </div>
+  </section>
+
+  <section class="section container" id="docs">
+    <div class="section-heading">
+      <p class="eyebrow signal">Docs</p>
+      <h2>Written for the person who has to run it.</h2>
+    </div>
+    <div class="feature-grid">
+      <a class="feature-card link" href="https://github.com/tochi-mba/User-api/blob/main/docs/api.md"><h3>The HTTP contract</h3><p>Every route and its rules.</p></a>
+      <a class="feature-card link" href="https://github.com/tochi-mba/User-api/blob/main/docs/architecture.md"><h3>Architecture</h3><p>The five layering contracts, and what each protects.</p></a>
+      <a class="feature-card link" href="https://github.com/tochi-mba/User-api/blob/main/docs/operations.md"><h3>Operations</h3><p>Every setting, and what an operator can and cannot do.</p></a>
+      <a class="feature-card link" href="https://github.com/tochi-mba/User-api/blob/main/docs/mcp.md"><h3>Assistant tools</h3><p>How a record is rendered to a model: as claims.</p></a>
+      <a class="feature-card link" href="https://github.com/tochi-mba/User-api/blob/main/docs/testing.md"><h3>Testing</h3><p>Where the tests concentrate, and why.</p></a>
+      <a class="feature-card link" href="https://github.com/tochi-mba/User-api/blob/main/CHANGELOG.md"><h3>Changelog</h3><p>What changed, and why it was wrong before.</p></a>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container footer-wrap">
+    <span>© <span id="year">2026</span> REX Technologies · User-api</span>
+    <span>Part of the <a href="https://tochi-mba.github.io/LUCY-assistant/">LUCY family</a>. MIT licensed.</span>
+    <span class="footer-links">
+      <a href="https://github.com/tochi-mba/User-api/blob/main/CHANGELOG.md">What's new <span aria-hidden="true">↗</span></a>
+      <a href="#top">Back to top <span aria-hidden="true">↑</span></a>
+    </span>
+  </div>
+</footer>
+<script src="app.js" defer></script>
+</body>
+</html>

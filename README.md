@@ -1,5 +1,7 @@
 # user-api
 
+A REX Technologies product. Site: <https://tochi-mba.github.io/User-api/>
+
 Somewhere to keep structured data about the **person** an assistant is talking to, and to
 get it back: what they are called and how they want to be addressed, their timezone, who is
 in their household, what they are allergic to, what they are working on, and what they said
