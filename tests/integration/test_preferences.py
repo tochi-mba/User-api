@@ -140,6 +140,76 @@ class TestChoicesReachTheWrite:
         assert response.status_code == 422
 
 
+class TestTheDefaultCompartment:
+    async def test_a_write_that_omits_scopes_lands_in_the_persons_default(
+        self, client: AsyncClient, chosen: FakeSettingsClient
+    ) -> None:
+        """The bug, named: ``scopes`` omitted and ``scopes: []`` meant the same thing.
+
+        The wire could not tell "the writer did not say" from "the writer said unscoped",
+        so a person's default compartment had nowhere to apply. Omitting the field is
+        not saying; an empty list is saying.
+        """
+        chosen.seed("user", {"default_write_scope": "health"})
+        health = token_for(scope="health")
+
+        omitted = await client.put(
+            "/v1/user/fields/blood_type",
+            json={"value": "O-", "description": "Blood type"},
+            headers=auth(health),
+        )
+        said = await client.post(
+            "/v1/user/notes",
+            json={"body": "n", "note_kind": "lesson", "description": "d", "scopes": []},
+            headers=auth(health),
+        )
+
+        assert omitted.status_code == 200, omitted.text
+        assert omitted.json()["scopes"] == ["health"]
+        assert said.status_code == 201, said.text
+        assert said.json()["scopes"] == []
+        hidden = await client.get("/v1/user/fields/blood_type", headers=auth(token_for()))
+        assert hidden.status_code == 404
+
+    async def test_a_note_that_omits_scopes_lands_in_the_default_too(
+        self, client: AsyncClient, chosen: FakeSettingsClient
+    ) -> None:
+        chosen.seed("user", {"default_write_scope": "home"})
+
+        response = await client.post(
+            "/v1/user/notes",
+            json={"body": "n", "note_kind": "lesson", "description": "d"},
+            headers=auth(token_for(scope="home")),
+        )
+
+        assert response.status_code == 201, response.text
+        assert response.json()["scopes"] == ["home"]
+
+    async def test_a_token_without_the_default_is_refused_and_told_why(
+        self, client: AsyncClient, token: str, chosen: FakeSettingsClient
+    ) -> None:
+        chosen.seed("user", {"default_write_scope": "health"})
+
+        response = await client.put(
+            "/v1/user/fields/preferred_name", json=FIELD, headers=auth(token)
+        )
+
+        assert response.status_code == 403
+        assert "default_write_scope" in response.json()["detail"]
+
+    async def test_an_outage_lands_writes_unscoped_as_before(
+        self, client: AsyncClient, chosen: FakeSettingsClient
+    ) -> None:
+        chosen.unavailable = True
+
+        response = await client.put(
+            "/v1/user/fields/preferred_name", json=FIELD, headers=auth(token_for(scope="home"))
+        )
+
+        assert response.status_code == 200
+        assert response.json()["scopes"] == []
+
+
 class TestWhenSettingsApiIsUnwell:
     async def test_an_outage_leaves_the_deployment_caps(
         self, client: AsyncClient, token: str, chosen: FakeSettingsClient

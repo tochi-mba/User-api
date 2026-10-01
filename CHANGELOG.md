@@ -46,6 +46,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `grace_days` and `log_values` stay on `SqlSettingsStore` because the erasure sweeper
   has no user token to present, and `log_values` is written by the public PUT and read by
   the event log on the same row.
+- `user.default_write_scope` is read from settings-api: a `set_field` or `write_note` that
+  **omits** `scopes` lands in the person's chosen compartment instead of unscoped.
+  `"scopes": []` still means unscoped, and named scopes are untouched -- the wire now
+  tells "did not say" from "said none". The default is held to the token like a named
+  scope, so a token that does not grant it gets a 403 naming the setting, rather than
+  writing up or quietly widening. It applies to a `set_field` that replaces a field too,
+  because a replace sets the field's scopes and one naming none would otherwise move a
+  narrowed field back to unscoped. `revise_entry` is unaffected. Null, unset, a value
+  outside the catalogue's bounds, an outage and an unconfigured settings-api all land
+  writes unscoped, exactly as before.
 
 ### Fixed
 

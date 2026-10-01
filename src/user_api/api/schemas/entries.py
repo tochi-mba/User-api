@@ -35,7 +35,9 @@ ScopeList = Annotated[
             "Compartments this entry belongs to. An entry with no scopes is visible to "
             "any valid token; an entry with scopes is visible only to a token whose "
             "audience grants one of them. You may only use the scope your own token "
-            "grants -- asking for another is refused, not silently dropped."
+            "grants -- asking for another is refused, not silently dropped. Omit this to "
+            "use the person's default compartment (unscoped unless they chose one); send "
+            "[] only when the entry should be visible to every token."
         ),
     ),
 ]

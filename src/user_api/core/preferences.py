@@ -2,10 +2,11 @@
 
 The deployment's configuration says how user-api behaves for everybody. settings-api
 holds what each person has chosen within that, and this module is the one place the two
-meet: it turns a caller's token into the pin ceiling a write is held to, and the page
-size a search uses when they name none. Nothing is read at startup, and with no
-settings-api configured every person gets the configuration as it stands -- exactly what
-user-api did before it read anybody's settings at all.
+meet: it turns a caller's token into the pin ceiling a write is held to, the page size a
+search uses when they name none, and the compartment a new entry lands in when its
+writer names no scopes. Nothing is read at startup, and with no settings-api configured
+every person gets the configuration as it stands -- exactly what user-api did before it
+read anybody's settings at all.
 
 Three rules shape it.
 
@@ -13,14 +14,17 @@ Three rules shape it.
 entries and the default search page still apply on top of what somebody chose; the
 catalogue says so under those entries, and this is where that becomes true.
 ``search_max_limit`` is not theirs at all -- it is the hard cap a request that names a
-page size is held to.
+page size is held to. ``default_write_scope`` is no ceiling but obeys the same rule from
+the other side: it can only narrow where an entry lands, because the token's own scope
+still decides what may be written.
 
-**An outage degrades per setting.** Both ``user`` entries this service reads fall back
-to a default, and when settings-api has never answered, the configuration is that
-default. ``erasure_mode``, ``grace_days`` and ``log_values`` stay on the SQL store:
-the sweeper has no user token to present, and ``log_values`` is written by the public
-PUT and read by the event log on the same row. Dual-writing it without a token for the
-sweeper would be half-wiring.
+**An outage degrades per setting.** All three ``user`` entries this service reads fall
+back to a default, and when settings-api has never answered, the configuration is that
+default -- for ``default_write_scope``, unscoped, which is also the catalogue's.
+``erasure_mode``, ``grace_days`` and ``log_values`` stay on the SQL store: the sweeper
+has no user token to present, and ``log_values`` is written by the public PUT and read
+by the event log on the same row. Dual-writing it without a token for the sweeper would
+be half-wiring.
 
 **A refusal is not an outage.** settings-api answering 401 or 403 means this service is
 misconfigured -- a missing grant, a wrong token -- and serving defaults would hide that
@@ -29,6 +33,7 @@ behind behaviour that happens to work. The request fails instead.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
@@ -54,6 +59,9 @@ NAMESPACE = "user"
 REFUSED = "settings-api did not accept this service's request for your settings"
 NOT_GUESSED = "one of your settings could not be read from settings-api and must not be guessed"
 
+_SCOPE_NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
+"""``user.default_write_scope``'s bounds in the catalogue: ``^[a-z][a-z0-9_]*$``, at most 32."""
+
 
 @dataclass(frozen=True, slots=True)
 class Preferences:
@@ -64,6 +72,14 @@ class Preferences:
 
     search_default_limit: int
     """Rows a search, export or event page returns when the caller does not say."""
+
+    default_write_scope: str | None = None
+    """The compartment a new entry lands in when its writer names no scopes.
+
+    ``None`` is unscoped -- what such a write always did. It is not a grant: the token's
+    own scope still decides what may be written, and a default the token does not hold
+    refuses the write (``user_api.domain.scopes.default_write_scopes``).
+    """
 
 
 class PreferenceSource(Protocol):
@@ -157,6 +173,7 @@ class SettingsApiPreferences:
             search_default_limit=_narrow(
                 settings.search_default_limit, search, ceiling=settings.search_max_limit
             ),
+            default_write_scope=_scope_name(resolved, "default_write_scope"),
         )
 
 
@@ -202,6 +219,22 @@ def _whole_number(resolved: ResolvedSettings, key: str, *, minimum: int) -> int 
     """
     value = resolved.get(key, None)
     if isinstance(value, int) and not isinstance(value, bool) and value >= minimum:
+        return value
+    if value is not None:
+        logger.warning("setting_unusable", namespace=NAMESPACE, key=key)
+    return None
+
+
+def _scope_name(resolved: ResolvedSettings, key: str) -> str | None:
+    """``key`` as a scope name within the catalogue's bounds, or ``None`` for unscoped.
+
+    Null is the catalogue's default and its conservative value, so a missing key or one
+    of the wrong shape lands writes where they always landed. Whether this deployment
+    *has* the scope is deliberately not checked here: a person who asked for a compartment
+    the deployment lacks is refused at the write, rather than quietly given the widest one.
+    """
+    value = resolved.get(key, None)
+    if isinstance(value, str) and _SCOPE_NAME.fullmatch(value):
         return value
     if value is not None:
         logger.warning("setting_unusable", namespace=NAMESPACE, key=key)

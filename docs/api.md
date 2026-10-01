@@ -68,7 +68,7 @@ input that failed.
 | Status | When | Why not something else |
 | --- | --- | --- |
 | **401** | No token, or one not accepted. | Undifferentiated on purpose: each distinction is an oracle that helps somebody forge the next one. |
-| **403** | Your token does not grant a scope you asked to read or write. | A fact about your *own token*, not about what exists, so being specific leaks nothing -- and a caller that cannot tell "refused" from "absent" retries forever. |
+| **403** | Your token does not grant a scope you asked to read or write -- or, on a write that omitted `scopes`, the compartment this person's new entries default to. | A fact about your *own token*, not about what exists, so being specific leaks nothing -- and a caller that cannot tell "refused" from "absent" retries forever. |
 | **404** | No such entry, for this token. | Identical whether it never existed, belongs to another account, is forgotten, or is out of your scope. A 403 here would confirm the entry exists, which is the fact that must not leak. |
 | **409** | A per-account limit is full, or a field key is taken by an entry you cannot see. | The second is the one awkward case -- see below. |
 | **422** | Malformed key, value, description, note, scope name, search query or cursor; or a value that looks like a credential. | Nothing has touched the database. |
@@ -203,8 +203,14 @@ Body: `value` (JSON scalar, list of scalars, or shallow object -- at most
 `scopes`, `sensitivity`, `pinned`. Unknown fields are **rejected**, not ignored;
 `asserted_by` is not accepted and comes from your token.
 
-Two behaviours that are not obvious:
+Three behaviours that are not obvious:
 
+- **Omitting `scopes` is not the same as `"scopes": []`.** Omitted, the entry lands in the
+  person's `default_write_scope` from settings-api -- unscoped unless they chose a
+  compartment, and unscoped whenever settings-api is not configured or cannot be reached.
+  `[]` is you saying unscoped, and is believed. A default your token does not grant is a
+  403 naming the setting: it can only narrow where an entry lands, never widen what your
+  token may write. This holds on a replace too, because a replace sets the field's scopes.
 - Writing the **same** value again moves `confirmed_at` to now. Restating a value is
   somebody saying it is still true, which is what a confirmation is.
 - Writing a **different** value clears `confirmed_at`. The new value has never been vouched

@@ -82,7 +82,9 @@ suite at 100% branch coverage.
 
 Optional: point `USER_API_SETTINGS_API_BASE_URL` and `USER_API_SETTINGS_API_TOKEN` at a
 settings-api so each person can lower `max_pinned` and `search_default_limit` (never
-raise them). Unset, everybody gets the deployment values. Erasure, grace and whether the
+raise them) and choose `default_write_scope`, the compartment a write that omits `scopes`
+lands in (a token that does not grant it is refused, never widened). Unset, everybody
+gets the deployment values and such writes stay unscoped. Erasure, grace and whether the
 event log keeps old values stay in this service -- the sweeper has no user token.
 
 ## The five properties it is built around

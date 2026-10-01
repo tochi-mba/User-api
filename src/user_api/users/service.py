@@ -15,7 +15,8 @@ It is not arbitrary, and getting it wrong leaks things:
    scope check, so a caller pasting an API key is told what is actually wrong rather than
    being told it lacks a scope and trying again with a different one.
 3. **Scopes** -- are these names real, and does this token carry them. Facts about the
-   caller's own token, so they may be specific.
+   caller's own token, so they may be specific. A write that names none takes the
+   person's ``user.default_write_scope`` here, held to the same rule.
 4. **Existence and caps** -- inside the store's transaction, where they cannot go stale.
 
 ## Provenance, and which half we verified
@@ -52,7 +53,12 @@ from user_api.domain.entries import (
 )
 from user_api.domain.errors import CredentialRefusedError, EntryNotFoundError, InvalidSearchError
 from user_api.domain.keys import WELL_KNOWN_KEYS, normalize_key, normalize_key_prefix
-from user_api.domain.scopes import check_filterable, check_known, check_writable
+from user_api.domain.scopes import (
+    check_filterable,
+    check_known,
+    check_writable,
+    default_write_scopes,
+)
 from user_api.domain.secrets import KEYRING_ADVICE, looks_like_a_credential
 from user_api.domain.values import searchable_text, validate_value
 from user_api.entries.store import UNSET, Counts, Filters, Journal, Page, _Unset
@@ -290,11 +296,16 @@ class UserService:
         description: str,
         source: Source = Source.STATED,
         source_detail: str | None = None,
-        scopes: tuple[str, ...] = (),
+        scopes: tuple[str, ...] | None = None,
         sensitivity: Sensitivity = Sensitivity.NORMAL,
         pinned: bool = False,
     ) -> Entry:
-        """Create or replace one field. Idempotent by key, so a retry cannot duplicate."""
+        """Create or replace one field. Idempotent by key, so a retry cannot duplicate.
+
+        ``scopes=None`` is a writer that did not say, and gets this person's default
+        compartment -- on a replace as well as a create, because a replace sets the
+        field's scopes too and one that named none would otherwise widen it.
+        """
         normalized = normalize_key(key)
         validate_value(
             value,
@@ -303,7 +314,7 @@ class UserService:
         )
         described = validate_description(description)
         _refuse_credentials(value, described, source_detail)
-        self._check_scopes(scopes, identity)
+        caps, scopes = await self._landing(scopes, identity)
 
         now = self._clock.now()
         # Before the write, not after: entries reference the record by foreign key, so a
@@ -312,7 +323,6 @@ class UserService:
         # cannot forget a call that does not exist.
         await self._users.ensure(identity.account_id, now=now)
         journal = await self._journal(identity.account_id)
-        caps = await self._caps(identity)
         entry = await self._entries.put_field(
             account_id=identity.account_id,
             key=normalized,
@@ -345,20 +355,23 @@ class UserService:
         description: str,
         source: Source = Source.INFERRED,
         source_detail: str | None = None,
-        scopes: tuple[str, ...] = (),
+        scopes: tuple[str, ...] | None = None,
         sensitivity: Sensitivity = Sensitivity.NORMAL,
         pinned: bool = False,
     ) -> Entry:
-        """Append a note. Always creates -- notes have no natural key."""
+        """Append a note. Always creates -- notes have no natural key.
+
+        ``scopes=None`` is a writer that did not say, and gets this person's default
+        compartment.
+        """
         text = validate_note_body(body, max_chars=self._config.max_note_chars)
         described = validate_description(description)
         _refuse_credentials(text, described, source_detail)
-        self._check_scopes(scopes, identity)
+        caps, scopes = await self._landing(scopes, identity)
 
         now = self._clock.now()
         await self._users.ensure(identity.account_id, now=now)
         journal = await self._journal(identity.account_id)
-        caps = await self._caps(identity)
         entry = await self._entries.write_note(
             account_id=identity.account_id,
             body=text,
@@ -547,8 +560,26 @@ class UserService:
         check_known(scopes, allowed=self._config.allowed_scopes)
         check_writable(scopes, granted=identity.granted_scope)
 
+    async def _landing(
+        self, scopes: tuple[str, ...] | None, identity: Identity
+    ) -> tuple[Preferences, tuple[str, ...]]:
+        """Where a new entry lands, and the caps its write is held to.
+
+        Scopes the writer named are checked first, exactly as before, so a write that
+        names its scopes is refused for the same reasons in the same order whatever the
+        person chose. Only a write that named none takes the person's default, and that
+        default is held to the token like any named scope. All of it runs before the
+        record is ensured, so a refused write leaves no trace.
+        """
+        if scopes is not None:
+            self._check_scopes(scopes, identity)
+        caps = await self._caps(identity)
+        if scopes is None:
+            scopes = default_write_scopes(caps.default_write_scope, granted=identity.granted_scope)
+        return caps, scopes
+
     async def _caps(self, identity: Identity) -> Preferences:
-        """This caller's pin ceiling and default page, resolved for this request.
+        """This caller's pin ceiling, default page and default compartment, per request.
 
         Read per request rather than cached on the service: a person who just lowered
         ``max_pinned`` is entitled to have the next write held to it, not to whatever

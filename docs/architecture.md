@@ -82,7 +82,7 @@ under `TYPE_CHECKING` and receives the adapter from the composition root.
 | `entries.store.EntryStore` | `entries.sql_store.SqlEntryStore` | The biggest surface: fields, notes, scopes, search, the caps and the index. Every method takes `account_id`, and every read takes `granted`. |
 | `events.log.EventLog` | `events.sql_log.SqlEventLog` | Its write methods are **synchronous and take a live connection**, because an event has to be written in the transaction it describes. |
 | `users.store.UserStore` | `users.sql_store.SqlUserStore` | Existence and erasure. Holds no content -- a preferred name is a field. |
-| `users.settings.SettingsStore` | `users.sql_settings.SqlSettingsStore` | `erasure_mode`, `grace_days` and `log_values`. They stay here because the erasure sweeper has no user token to present to settings-api, and `log_values` is written by the public PUT and read by the event log on the same row. Request-path caps (`max_pinned`, `search_default_limit`) are read from settings-api in `core.preferences` instead. |
+| `users.settings.SettingsStore` | `users.sql_settings.SqlSettingsStore` | `erasure_mode`, `grace_days` and `log_values`. They stay here because the erasure sweeper has no user token to present to settings-api, and `log_values` is written by the public PUT and read by the event log on the same row. Request-path caps (`max_pinned`, `search_default_limit`) and the default write compartment (`default_write_scope`) are read from settings-api in `core.preferences` instead. |
 | `core.clock.Clock` | `core.clock.SystemClock` | Three rules here are arithmetic on a date, and one is measured in days. |
 
 `tests/unit/test_ports.py` is the file that makes the Protocols mean something. A structural
@@ -111,7 +111,10 @@ they next called user-api, and in the meantime the sweeper would destroy entries
 just asked to keep. `log_values` is written by `PUT /v1/user/settings` and read by the
 event log on the same row. So those three stay on `SqlSettingsStore`; only `max_pinned`
 and `search_default_limit` are read from settings-api, clamped to the deployment ceilings
--- a person may lower them and never raise them.
+-- a person may lower them and never raise them -- along with `default_write_scope`, the
+compartment a write that omits `scopes` lands in. That one is held to the token by
+`domain.scopes.default_write_scopes`, the same rule as a named scope, so it can narrow
+where an entry lands and never lets a token write somewhere it could not name itself.
 
 There is no `save(entry)` anywhere. Writing a whole entry back means writing back everything
 a caller read some time ago, so two requests revising two different parts of one entry each

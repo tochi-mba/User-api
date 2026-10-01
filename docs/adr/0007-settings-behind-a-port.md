@@ -1,8 +1,8 @@
 # ADR-0007: Settings behind a port on day one
 
 **Status:** accepted. settings-api has since landed, and it did not become a second adapter
-behind this port. The two request-path caps (`max_pinned`, `search_default_limit`) are read
-from it through `core/preferences.py`; the three settings this port holds stay in
+behind this port. The two request-path caps (`max_pinned`, `search_default_limit`) and
+`default_write_scope` are read from it through `core/preferences.py`; the three settings this port holds stay in
 `SqlSettingsStore`, because the erasure sweeper has no user token to present.
 [docs/architecture.md](../architecture.md) ("Why erasure did not move") has the reasoning.
 The expectation below is kept as it was written.

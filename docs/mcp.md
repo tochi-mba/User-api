@@ -115,7 +115,7 @@ carries is the ceiling on what any call can reach.
 | Status | Meaning | What to do |
 | --- | --- | --- |
 | `401` | The token was not accepted. One message for every reason. | Get a new token. Do not retry with the same one. |
-| `403` | Your token does not grant a scope you asked for. | Do **not** retry with a different scope. The person mints tokens, not you. |
+| `403` | Your token does not grant a scope you asked for -- or, on a write that omitted `scopes`, the compartment this person's new entries default to (`default_write_scope`). | Do **not** retry with a different scope, `[]` included: that would widen what the person asked to keep narrow. The person mints tokens and chooses the default, not you. |
 | `404` | No such entry, for you. | Identical whether it never existed, was forgotten, or is out of your scope. Treat it as absent. |
 | `409` | A limit is full, or a field key is taken outside your scope. | Read the detail. Neither is retryable as-is. |
 | `422` | The request is malformed -- including "this looks like a credential". | Read the detail. A credential belongs in keyring; do not try again with it phrased differently. |

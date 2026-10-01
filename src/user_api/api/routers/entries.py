@@ -279,7 +279,7 @@ async def set_field(
         description=request.description,
         source=request.source,
         source_detail=request.source_detail,
-        scopes=tuple(request.scopes),
+        scopes=_named_scopes(request),
         sensitivity=request.sensitivity,
         pinned=request.pinned,
     )
@@ -329,11 +329,21 @@ async def write_note(
         description=request.description,
         source=request.source,
         source_detail=request.source_detail,
-        scopes=tuple(request.scopes),
+        scopes=_named_scopes(request),
         sensitivity=request.sensitivity,
         pinned=request.pinned,
     )
     return EntryResponse.of(entry)
+
+
+def _named_scopes(request: SetFieldRequest | WriteNoteRequest) -> tuple[str, ...] | None:
+    """The scopes a write named, or ``None`` if it did not mention them at all.
+
+    Read from ``model_fields_set`` rather than the parsed value, because the parsed value
+    is ``[]`` either way. The difference is the person's ``user.default_write_scope``:
+    omitting ``scopes`` lets it apply, and ``"scopes": []`` is a writer saying unscoped.
+    """
+    return tuple(request.scopes) if "scopes" in request.model_fields_set else None
 
 
 def _split(raw: str) -> list[str]:

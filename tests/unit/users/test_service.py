@@ -12,16 +12,18 @@ fake store would let a coordination bug through by agreeing with whatever it was
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from settings_client.testing import FakeSettingsClient
 
 from tests.conftest import ACCOUNT, OTHER_ACCOUNT, SCOPES, build_settings
 from tests.fakes.clock import FakeClock
 from user_api.auth.tokens import Identity
 from user_api.core.config import Settings
-from user_api.core.preferences import build_preference_source
+from user_api.core.preferences import PreferenceSource, build_preference_source
 from user_api.domain.cursors import Ordering
 from user_api.domain.entries import EntryType, NoteKind, Sensitivity, Source
 from user_api.domain.errors import (
@@ -80,7 +82,14 @@ def config(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-def service(database: Database, clock: FakeClock, config: Settings) -> UserService:
+def preferences(config: Settings) -> PreferenceSource:
+    return build_preference_source(config)
+
+
+@pytest.fixture
+def service(
+    database: Database, clock: FakeClock, config: Settings, preferences: PreferenceSource
+) -> UserService:
     events = SqlEventLog(database=database)
     entries = SqlEntryStore(database=database, events=events)
     users = SqlUserStore(database=database)
@@ -101,7 +110,7 @@ def service(database: Database, clock: FakeClock, config: Settings) -> UserServi
         database=database,
         clock=clock,
         config=config,
-        preferences=build_preference_source(config),
+        preferences=preferences,
     )
 
 
@@ -407,6 +416,100 @@ class TestScopes:
 
         with pytest.raises(EntryNotFoundError):
             await service.get_entry(identity(scope="home"), hidden.entry_id)
+
+
+class TestTheDefaultCompartment:
+    """``user.default_write_scope``: where a new entry lands when the writer does not say.
+
+    Read from settings-api through the shared fake. Omitting ``scopes`` is "not saying";
+    ``scopes=()`` is saying "unscoped", and the writer's word wins.
+    """
+
+    @pytest.fixture
+    def chosen(self) -> FakeSettingsClient:
+        client = FakeSettingsClient()
+        client.seed("user", {"default_write_scope": "health"})
+        return client
+
+    @pytest.fixture
+    def preferences(self, config: Settings, chosen: FakeSettingsClient) -> PreferenceSource:
+        return build_preference_source(config, client=chosen)
+
+    @staticmethod
+    def health() -> Identity:
+        return replace(identity(scope="health"), token="a-health-token")
+
+    async def test_a_field_that_names_no_scopes_lands_in_the_default(
+        self, service: UserService
+    ) -> None:
+        """The bug, named: a person's chosen compartment that writes never reached.
+
+        Before this setting was read, an entry written without scopes was unscoped --
+        readable by every valid token -- whatever the person had asked for.
+        """
+        stored = await field(service, identity=self.health())
+
+        assert stored.scopes == ("health",)
+        with pytest.raises(EntryNotFoundError):
+            await service.get_entry(replace(identity(scope="home"), token="t"), stored.entry_id)
+
+    async def test_a_note_that_names_no_scopes_lands_in_the_default(
+        self, service: UserService
+    ) -> None:
+        stored = await written_note(service, identity=self.health())
+
+        assert stored.scopes == ("health",)
+
+    async def test_a_writer_that_says_unscoped_is_believed(self, service: UserService) -> None:
+        stored = await field(service, identity=self.health(), scopes=())
+
+        assert stored.scopes == ()
+
+    async def test_replacing_a_field_without_naming_scopes_keeps_it_narrow(
+        self, service: UserService
+    ) -> None:
+        """The bug, named: a replace that silently widened what a default had narrowed.
+
+        ``set_field`` replaces a field's scopes along with its value, and a replace that
+        names none used to mean unscoped. Applying the default only to the first write
+        would let the next one move a ``health`` field to where every token can read it.
+        """
+        await field(service, identity=self.health(), value="O-")
+
+        replaced = await field(service, identity=self.health(), value="O+")
+
+        assert replaced.revision == 2
+        assert replaced.scopes == ("health",)
+
+    async def test_a_token_without_the_default_compartment_cannot_write_without_naming_one(
+        self, service: UserService
+    ) -> None:
+        # The catalogue's words: setting a scope the assistant's token lacks makes its
+        # writes fail rather than making them privileged -- and rather than widening.
+        home = replace(identity(scope="home"), token="a-home-token")
+
+        with pytest.raises(ScopeNotGrantedError, match="default_write_scope"):
+            await field(service, identity=home)
+
+        assert (await service.get_user(home)).record is None
+
+    async def test_a_credential_is_still_reported_before_the_compartment(
+        self, service: UserService
+    ) -> None:
+        home = replace(identity(scope="home"), token="a-home-token")
+
+        with pytest.raises(CredentialRefusedError):
+            await field(service, identity=home, value=GITHUB_TOKEN)
+
+    async def test_a_revision_that_names_no_scopes_leaves_them_alone(
+        self, service: UserService
+    ) -> None:
+        # A revision is not a new entry, and "leave it alone" stays what omitting means.
+        unscoped = await field(service, identity=self.health(), scopes=())
+
+        revised = await service.revise_entry(self.health(), unscoped.entry_id, value="Samuel")
+
+        assert revised.scopes == ()
 
 
 class TestTheSchema:

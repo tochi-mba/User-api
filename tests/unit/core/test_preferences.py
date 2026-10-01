@@ -31,6 +31,7 @@ SETTINGS_API_TOKEN = "settings-api-token-for-user-api-tests01"
 FALLBACKS = {
     "max_pinned": Fallback(default=40, on_unavailable=OnUnavailable.USE_DEFAULT),
     "search_default_limit": Fallback(default=20, on_unavailable=OnUnavailable.USE_DEFAULT),
+    "default_write_scope": Fallback(default=None, on_unavailable=OnUnavailable.USE_DEFAULT),
 }
 
 
@@ -52,6 +53,10 @@ class TestWithoutSettingsApi:
         settings = settings_with(max_pinned=4, search_default_limit=7)
 
         assert deployment_preferences(settings) == Preferences(max_pinned=4, search_default_limit=7)
+
+    def test_nobody_has_a_default_compartment_without_settings_api(self) -> None:
+        # The deployment has no opinion on where a new entry lands: unscoped, as always.
+        assert deployment_preferences(settings_with()).default_write_scope is None
 
     async def test_nobody_is_asked_when_settings_api_is_not_configured(self) -> None:
         settings = settings_with()
@@ -109,6 +114,22 @@ class TestAPersonsChoices:
 
         assert preferences.search_default_limit == 50
 
+    async def test_a_default_compartment_is_carried_to_the_write(self) -> None:
+        client = FakeSettingsClient()
+        client.seed("user", {"default_write_scope": "health"})
+
+        preferences = await reading(client).for_token(USER_TOKEN)
+
+        assert preferences.default_write_scope == "health"
+
+    async def test_a_null_default_compartment_is_unscoped(self) -> None:
+        client = FakeSettingsClient()
+        client.seed("user", {"default_write_scope": None})
+
+        preferences = await reading(client).for_token(USER_TOKEN)
+
+        assert preferences.default_write_scope is None
+
     async def test_a_request_with_no_caller_asks_nobody(self) -> None:
         client = FakeSettingsClient()
         settings = settings_with()
@@ -139,6 +160,20 @@ class TestWhenSettingsApiCannotBeReached:
 
         assert preferences.max_pinned == 4
         assert preferences.search_default_limit == 20
+
+    async def test_an_outage_cannot_move_where_writes_land(self) -> None:
+        """The bug, named: an outage that changed which compartment a write went into.
+
+        The catalogue's default and conservative value is null -- what every existing
+        entry already assumes -- so the fallback during an outage is unscoped, exactly as
+        if the person had chosen nothing.
+        """
+        client = FakeSettingsClient(fallbacks={"user": FALLBACKS})
+        client.unavailable = True
+
+        preferences = await reading(client).for_token(USER_TOKEN)
+
+        assert preferences.default_write_scope is None
 
     async def test_a_user_setting_that_refuses_fails_rather_than_being_guessed(self) -> None:
         refusing = {"max_pinned": Fallback(default=40, on_unavailable=OnUnavailable.REFUSE)}
@@ -193,6 +228,27 @@ class TestValuesThatCannotBeUsed:
         preferences = await reading(client, search_default_limit=7).for_token(USER_TOKEN)
 
         assert preferences.search_default_limit == 7
+
+    @pytest.mark.parametrize(
+        "value", [True, 3, "", "Health", "1health", "health.home", "a" * 33, ["health"]]
+    )
+    async def test_an_unusable_default_compartment_is_no_default(self, value: Any) -> None:
+        # The catalogue's own bounds: at most 32 characters of ^[a-z][a-z0-9_]*$. Anything
+        # else is settings-api's bug, and null is that entry's conservative value.
+        client = FakeSettingsClient()
+        client.seed("user", {"default_write_scope": value})
+
+        preferences = await reading(client).for_token(USER_TOKEN)
+
+        assert preferences.default_write_scope is None
+
+    async def test_the_longest_default_compartment_the_catalogue_allows_is_kept(self) -> None:
+        client = FakeSettingsClient()
+        client.seed("user", {"default_write_scope": "a" * 32})
+
+        preferences = await reading(client).for_token(USER_TOKEN)
+
+        assert preferences.default_write_scope == "a" * 32
 
     async def test_a_missing_setting_leaves_the_configuration(self) -> None:
         client = FakeSettingsClient()
