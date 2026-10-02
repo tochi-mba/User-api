@@ -1,0 +1,19 @@
+{
+  "$schema": "https://tochi-mba.github.io/schema/project.schema.json",
+  "slug": "user",
+  "name": "user",
+  "tagline": "Structured data about the person an assistant is talking to, returned as claims with provenance.",
+  "description": "Preferred name, timezone, household, allergies, what they are working on, what they said last month. Everything comes back with provenance so it can be rendered as a claim rather than obeyed as an instruction; anything that looks like a credential is refused rather than stored; forget that reaches the bytes on disk; and no request can name a person other than the one its token was minted for.",
+  "highlights": [
+    "Credential-shaped values refused",
+    "Delete means the bytes on disk",
+    "Token-bound: no cross-person access"
+  ],
+  "stack": ["Python 3.12", "FastAPI"],
+  "category": "service",
+  "family": "lucy",
+  "role": "user",
+  "status": "active",
+  "order": 130,
+  "display": true
+}
