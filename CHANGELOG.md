@@ -60,6 +60,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **settings-client 0.4.1.** A single-flight lock is dropped by the last caller out. Older
+  clients kept the lock of every resolve that failed (an outage, a refused grant) for good,
+  one per token, and keyring tokens rotate every few minutes.
 - The first write after an erasure could fail with `cannot commit transaction - SQL
   statements in progress`, depending on garbage-collector timing. The truncating checkpoint
   handed its unread cursor back out of the database worker, which kept the checkpoint
