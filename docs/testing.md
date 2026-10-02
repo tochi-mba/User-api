@@ -182,9 +182,10 @@ default and never raise it; a 401/403 from settings-api is a 503 with fixed text
 neither the grant nor the URL; a value of the wrong type leaves the configuration and
 logs the key, never the value. Two accounts on one store are held to different pin
 ceilings because the cap is resolved per request, not frozen into the store at startup.
-`default_write_scope` is tested from the wire down: omitting `scopes` and sending `[]`
-are told apart, a replace keeps a defaulted field narrow, a token that lacks the default
-is refused, and an outage lands writes unscoped exactly as before.
+`default_write_scope` is tested at the wire and in the service: over HTTP, omitting
+`scopes` and sending `[]` are told apart and a token that lacks the default is refused;
+in the service, a replace keeps a defaulted field narrow and an outage with nothing held
+lands writes unscoped.
 
 `erasure_mode`, `grace_days` and `log_values` stay on `SqlSettingsStore` on purpose: the
 sweeper has no user token, and faking a dual-write would be a setting that stores a value

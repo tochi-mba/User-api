@@ -54,8 +54,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   writing up or quietly widening. It applies to a `set_field` that replaces a field too,
   because a replace sets the field's scopes and one naming none would otherwise move a
   narrowed field back to unscoped. `revise_entry` is unaffected. Null, unset, a value
-  outside the catalogue's bounds, an outage and an unconfigured settings-api all land
-  writes unscoped, exactly as before.
+  outside the catalogue's bounds and an unconfigured settings-api all land writes
+  unscoped, exactly as before. During an outage the person's last answer is used while
+  it is still held, and unscoped once it is not.
 
 ### Fixed
 
