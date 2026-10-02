@@ -48,10 +48,10 @@ class TokenKeyedFake(FakeSettingsClient):
     def seed_token(self, user_token: str, values: Mapping[str, Any]) -> None:
         self.by_token[user_token] = dict(values)
 
-    async def resolve(self, namespace: str, *, user_token: str) -> Any:
+    async def resolve(self, namespace: str, *, user_token: str, profile: str | None = None) -> Any:
         if user_token in self.by_token:
             self._values[namespace] = dict(self.by_token[user_token])
-        return await super().resolve(namespace, user_token=user_token)
+        return await super().resolve(namespace, user_token=user_token, profile=profile)
 
 
 @pytest.fixture
