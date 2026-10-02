@@ -207,7 +207,9 @@ Three behaviours that are not obvious:
 
 - **Omitting `scopes` is not the same as `"scopes": []`.** Omitted, the entry lands in the
   person's `default_write_scope` from settings-api -- unscoped unless they chose a
-  compartment, and unscoped whenever settings-api is not configured or cannot be reached.
+  compartment. During a settings-api outage the person's last answer is used while this
+  service still holds it; with none held, or with settings-api not configured, the entry
+  is unscoped.
   `[]` is you saying unscoped, and is believed. A default your token does not grant is a
   403 naming the setting: it can only narrow where an entry lands, never widen what your
   token may write. This holds on a replace too, because a replace sets the field's scopes.
