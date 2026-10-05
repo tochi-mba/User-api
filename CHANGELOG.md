@@ -60,6 +60,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **settings-client 0.4.2.** A 2xx answer the client cannot use -- a proxy's page, an empty
+  body, a document from a newer settings-api -- is treated as an outage and degrades as one,
+  instead of reaching this service as a 500.
 - **settings-client 0.4.1.** A single-flight lock is dropped by the last caller out. Older
   clients kept the lock of every resolve that failed (an outage, a refused grant) for good,
   one per token, and keyring tokens rotate every few minutes.
